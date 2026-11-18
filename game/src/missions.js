@@ -1,364 +1,306 @@
-// The story: six jobs for the fixer Marisol Vega, run in order. Each job
-// opens with dialogue (portrait + typewriter lines), then a chain of
-// stages: drive somewhere, steal a motor, fight, race checkpoints, escape
-// the law. Failing returns the hero to the job's start to try again.
-import { ARSENAL } from './config.js';
-import { spawnVehicle } from './vehicles.js';
-import { raiseHeat } from './police.js';
-import { spawnFoe, clearFoes } from './combat.js';
+// The six story jobs: definitions, dialogue, objectives and rewards.
+// A mission is a list of steps; the runner advances through them and pays
+// out when the last one completes. Missions run in order, 0 to 5.
+import { LANDMARKS } from './city.js';
+import { makeCar } from './vehicles.js';
+import { spawnEnemies, clearEnemies } from './combat.js';
+import { addWanted, syncPolice, clearWanted } from './police.js';
 
-export const CAST = {
-  rook: { name: 'Rook', color: '#f5b942', initials: 'RK' },
-  marisol: { name: 'Marisol Vega', color: '#2dd4bf', initials: 'MV' },
-  rosa: { name: 'Rosa', color: '#f472b6', initials: 'RO' },
-  kade: { name: 'Kade Morozov', color: '#ef4444', initials: 'KM' },
-};
-
-export const JOBS = [
+export const MISSION_DEFS = [
   {
-    key: 'back-in-town',
-    name: 'Back in Town',
-    from: 'Marisol Vega',
-    open: [
-      { who: 'marisol', text: 'Rook. You are back in Solara Bay and broke. Good — broke men work hard.' },
-      { who: 'rook', text: 'Nice to see you too, Marisol. What is the job?' },
-      { who: 'marisol', text: 'First, wheels. Get yourself to my garage. There is a car waiting — do not scratch it.' },
+    id: 'back-in-town',
+    title: 'Back in Town',
+    reward: 300,
+    unlock: null,
+    dialogue: [
+      { who: 'Marisol Vega', text: 'Rook. You came back. And broke, from the look of you.' },
+      { who: 'Rook Calloway', text: 'I need work, Marisol. Not a lecture.' },
+      { who: 'Marisol Vega', text: 'Take the sedan down the road. Bring it to my garage. Try not to scratch it.' },
     ],
-    close: [{ who: 'marisol', text: 'There you are. The Bay missed you. The work starts now.' }],
-    pay: 300,
-    fame: 100,
-    stages: [
-      { key: 'garage', brief: 'Drive to Marisol\u2019s Garage', type: 'goto', x: -56, z: 98, range: 14 },
+    steps: [
+      { kind: 'car', text: 'Get in the sedan', carAt: { x: 0, z: 40 }, carType: 'sedan' },
+      { kind: 'goto', text: 'Drive to the garage', x: LANDMARKS.garage.x, z: LANDMARKS.garage.z, radius: 16, inCar: true },
     ],
   },
   {
-    key: 'hot-wheels',
-    name: 'Hot Wheels',
-    from: 'Marisol Vega',
-    open: [
-      { who: 'marisol', text: 'A red Comet GT is parked at Bayfront Plaza. The owner owes me. Take it.' },
-      { who: 'rook', text: 'Steal a car in the middle of the plaza? In daylight?' },
-      { who: 'marisol', text: 'That is why I pay you. Bring it to the paint shop — and lose the cops if they notice.' },
+    id: 'hot-wheels',
+    title: 'Hot Wheels',
+    reward: 500,
+    unlock: null,
+    dialogue: [
+      { who: 'Marisol Vega', text: 'A Comet GT is sitting by the docks. I already have a buyer.' },
+      { who: 'Rook Calloway', text: 'Stealing it is the easy part.' },
+      { who: 'Marisol Vega', text: 'Then drive it to the drop point. Fast. The buyer does not wait.' },
     ],
-    close: [{ who: 'marisol', text: 'Beautiful. New plates by morning, new paint by noon.' }],
-    pay: 500,
-    fame: 150,
-    stages: [
-      { key: 'steal', brief: 'Steal the red Comet GT at Bayfront Plaza', type: 'car', motor: 'comet', tint: 0xc0392b, x: 40, z: 8, range: 12 },
-      { key: 'deliver', brief: 'Drive the Comet to Solara Paint & Body', type: 'goto', x: 160, z: -58, range: 14, needsRide: true },
+    steps: [
+      { kind: 'car', text: 'Steal the Comet GT', carAt: { x: LANDMARKS.cometSpot.x, z: LANDMARKS.cometSpot.z }, carType: 'comet', steal: true },
+      { kind: 'goto', text: 'Drive to the drop point', x: LANDMARKS.dropPoint.x, z: LANDMARKS.dropPoint.z, radius: 16, inCar: true },
     ],
   },
   {
-    key: 'payback',
-    name: 'Payback at the Marina',
-    from: 'Marisol Vega',
-    open: [
-      { who: 'marisol', text: 'Kade\u2019s crew took my shipment at the marina. Five of them, counting on us to stay quiet.' },
-      { who: 'rook', text: 'We are not staying quiet.' },
-      { who: 'marisol', text: 'No. We are not. Clear them out — and take the SMG from the stash first. It is yours now.' },
+    id: 'payback',
+    title: 'Payback',
+    reward: 700,
+    unlock: 'smg',
+    dialogue: [
+      { who: 'Marisol Vega', text: "Kade's crew took over Vega Plaza. They think it belongs to them now." },
+      { who: 'Rook Calloway', text: 'How many?' },
+      { who: 'Marisol Vega', text: 'Five. Clear them out. The SMG in my stash is yours after.' },
     ],
-    close: [{ who: 'marisol', text: 'Shipment recovered. Kade will hear about this — good. Let him.' }],
-    pay: 700,
-    fame: 250,
-    gift: 'smg',
-    stages: [
-      { key: 'marina', brief: 'Go to the Marina Docks', type: 'goto', x: -280, z: 120, range: 16 },
-      { key: 'clear', brief: 'Clear out Kade\u2019s crew (0/5)', type: 'kill', count: 5, x: -280, z: 120, range: 40 },
-    ],
-  },
-  {
-    key: 'night-run',
-    name: 'Night Run',
-    from: 'Rosa',
-    open: [
-      { who: 'rosa', text: 'Rook! The street racers run the loop tonight. Five checkpoints, two and a half minutes.' },
-      { who: 'rook', text: 'And if I beat their time?' },
-      { who: 'rosa', text: 'Then everybody in Solara Bay knows your name. Drive like you stole it — because you did.' },
-    ],
-    close: [{ who: 'rosa', text: 'That was unreal! The whole Bay is talking about you now.' }],
-    pay: 600,
-    fame: 200,
-    clock: 150,
-    stages: [
-      { key: 'cp1', brief: 'Checkpoint 1/5 — Old Town', type: 'goto', x: -200, z: -200, range: 14, needsRide: true },
-      { key: 'cp2', brief: 'Checkpoint 2/5 — Downtown', type: 'goto', x: 200, z: -200, range: 14, needsRide: true },
-      { key: 'cp3', brief: 'Checkpoint 3/5 — Beachfront', type: 'goto', x: 200, z: 200, range: 14, needsRide: true },
-      { key: 'cp4', brief: 'Checkpoint 4/5 — Little Havana', type: 'goto', x: -200, z: 200, range: 14, needsRide: true },
-      { key: 'cp5', brief: 'Checkpoint 5/5 — Finish at the beach', type: 'goto', x: 0, z: 280, range: 14, needsRide: true },
+    steps: [
+      { kind: 'goto', text: 'Go to Vega Plaza', x: LANDMARKS.plaza.x, z: LANDMARKS.plaza.z, radius: 22 },
+      {
+        kind: 'kill', text: "Clear out Kade's crew", count: 5,
+        spawn: [
+          { x: -168, z: -88 }, { x: -152, z: -72 }, { x: -160, z: -64 },
+          { x: -144, z: -88 }, { x: -176, z: -72 },
+        ],
+      },
     ],
   },
   {
-    key: 'the-getaway',
-    name: 'The Getaway',
-    from: 'Marisol Vega',
-    open: [
-      { who: 'marisol', text: 'Rosa is pinned at the Bay Union Bank. The SBPD is all over it. Get her out.' },
-      { who: 'rosa', text: 'Rook, hurry! They have the whole street blocked!' },
-      { who: 'marisol', text: 'Bring her to the safehouse in the Hills. Three stars, minimum. Do not get caught.' },
+    id: 'night-run',
+    title: 'Night Run',
+    reward: 600,
+    unlock: null,
+    timeLimit: 150,
+    dialogue: [
+      { who: 'Marisol Vega', text: 'Night run. Five checkpoints, across the whole city. Beat the clock.' },
+      { who: 'Rook Calloway', text: 'How much time?' },
+      { who: 'Marisol Vega', text: 'Two and a half minutes. Do not be late.' },
     ],
-    close: [{ who: 'rosa', text: 'We made it! You drive like a maniac, Rook. Never change.' }],
-    pay: 900,
-    fame: 300,
-    gift: 'shotgun',
-    stages: [
-      { key: 'pickup', brief: 'Pick up Rosa at the bank (E)', type: 'interact', x: 80, z: -178, range: 10 },
-      { key: 'escape', brief: 'Escape to the Safehouse in the Hills', type: 'goto', x: 260, z: -238, range: 14 },
+    steps: [
+      { kind: 'goto', text: 'Checkpoint 1 of 5', x: 0, z: 0, radius: 14, inCar: true },
+      { kind: 'goto', text: 'Checkpoint 2 of 5', x: 160, z: 0, radius: 14, inCar: true },
+      { kind: 'goto', text: 'Checkpoint 3 of 5', x: 160, z: 160, radius: 14, inCar: true },
+      { kind: 'goto', text: 'Checkpoint 4 of 5', x: -160, z: 160, radius: 14, inCar: true },
+      { kind: 'goto', text: 'Checkpoint 5 of 5', x: -160, z: -160, radius: 14, inCar: true },
     ],
   },
   {
-    key: 'king-of-solara',
-    name: 'King of Solara',
-    from: 'Marisol Vega',
-    open: [
-      { who: 'kade', text: 'Rook Calloway. You have been a thorn in my side all week. That ends tonight.' },
-      { who: 'marisol', text: 'Kade brought his whole crew to the plaza. End this, Rook — and the Bay is yours.' },
-      { who: 'rook', text: 'Time to collect. For all of us.' },
+    id: 'the-getaway',
+    title: 'The Getaway',
+    reward: 900,
+    unlock: 'shotgun',
+    dialogue: [
+      { who: 'Rosa', text: "Rook! Kade's people are coming for me!" },
+      { who: 'Rook Calloway', text: 'Get in the car. We are going to the hills.' },
+      { who: 'Marisol Vega', text: 'The cops are already on you. Three stars. Lose them at the safehouse.' },
     ],
-    close: [{ who: 'marisol', text: 'It is done. Solara Bay finally knows the name Rook Calloway.' }],
-    pay: 1500,
-    fame: 600,
-    gift: 'rifle',
-    stages: [
-      { key: 'wave1', brief: 'Defeat Kade\u2019s crew — wave 1 (0/4)', type: 'kill', count: 4, x: 80, z: 0, range: 45 },
-      { key: 'wave2', brief: 'Defeat Kade and his last crew (0/5)', type: 'kill', count: 5, x: 80, z: 0, range: 45, chief: true },
+    steps: [
+      { kind: 'goto', text: 'Reach Rosa', x: LANDMARKS.rosaSpot.x, z: LANDMARKS.rosaSpot.z, radius: 12 },
+      { kind: 'interact', text: 'Pick up Rosa (E)', x: LANDMARKS.rosaSpot.x, z: LANDMARKS.rosaSpot.z, radius: 6 },
+      { kind: 'goto', text: 'Escape to the safehouse in the hills', x: LANDMARKS.safehouse.x, z: LANDMARKS.safehouse.z, radius: 18, inCar: true },
+    ],
+  },
+  {
+    id: 'king-of-solara',
+    title: 'King of Solara',
+    reward: 1500,
+    unlock: 'rifle',
+    dialogue: [
+      { who: 'Marisol Vega', text: 'Kade is at the docks with his whole crew. End it tonight.' },
+      { who: 'Rook Calloway', text: 'This is for everything he took from me.' },
+      { who: 'Kade Morozov', text: 'You should have stayed gone, Rook.' },
+    ],
+    steps: [
+      { kind: 'goto', text: 'Go to the docks', x: LANDMARKS.docks.x, z: LANDMARKS.docks.z, radius: 24 },
+      {
+        kind: 'kill', text: 'Take down the first wave', count: 4,
+        spawn: [
+          { x: 320, z: 32 }, { x: 320, z: 48 }, { x: 328, z: 24 }, { x: 328, z: 56 },
+        ],
+      },
+      {
+        kind: 'kill', text: 'Take down Kade and his crew', count: 5,
+        spawn: [
+          { x: 320, z: 40, hp: 220, boss: true },
+          { x: 320, z: 24 }, { x: 328, z: 40 }, { x: 320, z: 56 }, { x: 336, z: 32 },
+        ],
+      },
     ],
   },
 ];
 
-export function newJobRunner(W) {
-  const runner = {
+export function createMissions(W) {
+  const M = {
     index: 0,
-    stage: 0,
-    live: false,
-    timer: 0,
-    state: 'idle', // idle | dialogue | running | passed | failed | done
+    step: 0,
+    state: 'idle', // idle | dialogue | running | done
+    completed: [],
+    mission: null,
+    stepDef: null,
+    dialogue: null,
     banner: null,
     bannerT: 0,
+    killsDone: 0,
+    killsTarget: 0,
+    timer: 0,
     markerCar: null,
-    finished: [],
-    dialogue: null, // { lines, at }
-    downCount: 0,
+    rosa: null,
 
-    get job() { return JOBS[runner.index] || null; },
-    get stageDef() {
-      const j = runner.job;
-      return j ? j.stages[runner.stage] : null;
+    start(i) {
+      clearEnemies(W);
+      M.index = i;
+      M.step = 0;
+      M.killsDone = 0;
+      M.killsTarget = 0;
+      M.mission = MISSION_DEFS[i];
+      M.timer = M.mission.timeLimit || 0;
+      M.markerCar = null;
+      M.state = 'dialogue';
+      M.dialogue = { lines: M.mission.dialogue, at: 0 };
+      M.banner = M.mission.title;
+      M.bannerT = 0;
+      M.stepDef = M.mission.steps[0];
+      if (W.hud) W.hud.showDialogue(M.dialogue.lines[0]);
     },
 
-    start(index) {
-      runner.index = index;
-      runner.stage = 0;
-      runner.live = true;
-      runner.timer = 0;
-      runner.downCount = 0;
-      W.jobWaiting = false; // the waiting job is starting now, not waiting
-      const j = runner.job;
-      runner.dialogue = { lines: j.open, at: 0 };
-      runner.state = 'dialogue';
-      runner.banner = null;
-      clearFoes(W);
-      prepareStage(W);
-    },
-
-    /** Advance the dialogue; returns true when the dialogue finished. */
-    nextLine() {
-      if (runner.state !== 'dialogue' || !runner.dialogue) return true;
-      runner.dialogue.at += 1;
-      if (runner.dialogue.at >= runner.dialogue.lines.length) {
-        runner.dialogue = null;
-        runner.state = 'running';
-        const j = runner.job;
-        runner.banner = { title: j.name, sub: `JOB ${runner.index + 1} OF ${JOBS.length} · ${j.from}`, text: '', kind: 'intro' };
-        runner.bannerT = 0;
-        return true;
+    advanceDialogue() {
+      if (!M.dialogue) return;
+      M.dialogue.at += 1;
+      if (M.dialogue.at >= M.dialogue.lines.length) {
+        M.dialogue = null;
+        M.state = 'running';
+        // Missions start clean: drop any heat from free roam so a cop
+        // tailing the player can't bust them mid-mission.
+        clearWanted(W);
+        if (W.hud) W.hud.hideDialogue();
+        M.enterStep();
+      } else if (W.hud) {
+        W.hud.showDialogue(M.dialogue.lines[M.dialogue.at]);
       }
-      return false;
+    },
+
+    enterStep() {
+      const s = M.mission.steps[M.step];
+      M.stepDef = s;
+      if (!s) return;
+      if (s.kind === 'car') {
+        // The mission car: parked at the given spot, facing up the road
+        // (+z) so the first leg never needs a U-turn off the asphalt.
+        const car = makeCar(s.carType, s.carAt.x, s.carAt.z, 0, undefined);
+        car.driver = 'parked';
+        car.mesh = W.renderer.makeCarMesh(s.carType, car.color);
+        car.mesh.userData.hitRef = { kind: 'car', ref: car };
+        W.renderer.scene.add(car.mesh);
+        W.cars.push(car);
+        M.markerCar = car;
+      } else if (s.kind === 'kill') {
+        M.killsDone = 0;
+        M.killsTarget = s.count;
+        spawnEnemies(W, s.spawn);
+      }
     },
 
     update(dt) {
-      if (runner.state === 'dialogue') return;
-      if (runner.state !== 'running') return;
-      const j = runner.job;
-      const s = runner.stageDef;
+      if (M.state === 'dialogue') return;
+      if (M.state !== 'running') return;
+      if (M.timer > 0) {
+        M.timer -= dt;
+        if (M.timer <= 0) {
+          M.fail('Out of time.');
+          return;
+        }
+      }
+      const s = M.stepDef;
       if (!s) return;
-      if (j.clock) {
-        runner.timer += dt;
-        if (runner.timer > j.clock) {
-          runner.fail('time');
-          return;
-        }
-      }
-      const hero = W.hero;
-      if (s.type === 'car') {
-        if (runner.markerCar && runner.markerCar.dead) {
-          W.note = 'Your job car was wrecked.';
-          W.noteT = 3;
-          runner.fail('car-lost');
-          return;
-        }
-        if (hero.car && runner.markerCar && hero.car === runner.markerCar) {
-          if (j.key === 'hot-wheels') raiseHeat(W, 1, 'Someone called the cops on the theft.');
-          nextStage(W);
-        }
-        return;
-      }
-      if (s.type === 'kill') {
-        if (runner.downCount >= s.count) nextStage(W);
-        return;
-      }
-      if (s.type === 'interact') {
-        const d = Math.hypot(hero.x - s.x, hero.z - s.z);
-        if (d < s.range && !hero.car && W.useInteract) {
-          W.useInteract = false;
-          if (j.key === 'the-getaway' && s.key === 'pickup') {
-            raiseHeat(W, 3, 'The SBPD is all over you — run!');
+      const p = W.player;
+      let done = false;
+      if (s.kind === 'car') {
+        done = p.car === M.markerCar;
+      } else if (s.kind === 'goto') {
+        const d = Math.hypot(p.x - s.x, p.z - s.z);
+        done = d < s.radius && (!s.inCar || !!p.car);
+      } else if (s.kind === 'interact') {
+        if (W.consumeInteract) {
+          W.consumeInteract = false;
+          const d = Math.hypot(p.x - s.x, p.z - s.z);
+          if (d < s.radius) {
+            done = true;
+            // Rosa hops in: the heat jumps to three stars.
+            if (M.mission.id === 'the-getaway') {
+              W.wanted.stars = 3;
+              syncPolice(W);
+              W.message = 'Rosa is with you. Three stars — run!';
+              W.messageT = 3;
+            }
           }
-          nextStage(W);
         }
-        return;
+      } else if (s.kind === 'kill') {
+        done = M.killsDone >= M.killsTarget;
       }
-      // Plain goto.
-      const px = hero.car ? hero.car.x : hero.x;
-      const pz = hero.car ? hero.car.z : hero.z;
-      if (s.needsRide && !hero.car) return;
-      if (s.needsWalk && hero.car) return;
-      if (Math.hypot(px - s.x, pz - s.z) < s.range) nextStage(W);
+      if (done) M.advance();
     },
 
-    onFoeDown() {
-      if (runner.state !== 'running') return;
-      const s = runner.stageDef;
-      if (s && s.type === 'kill') {
-        runner.downCount += 1;
-        if (s.key === 'clear') s.brief = `Clear out Kade\u2019s crew (${runner.downCount}/5)`;
-        else if (s.key === 'wave1') s.brief = `Defeat Kade\u2019s crew — wave 1 (${runner.downCount}/4)`;
-        else if (s.key === 'wave2') s.brief = `Defeat Kade and his last crew (${runner.downCount}/5)`;
+    advance() {
+      if (W.audio) W.audio.pickup();
+      M.step += 1;
+      if (M.step >= M.mission.steps.length) {
+        M.complete();
+      } else {
+        M.enterStep();
+      }
+    },
+
+    complete() {
+      const m = M.mission;
+      M.state = 'done';
+      M.stepDef = null;
+      M.completed.push(m.id);
+      W.player.cash += m.reward;
+      W.stats.earned += m.reward;
+      W.stats.done += 1;
+      if (m.unlock && !W.player.weapons.includes(m.unlock)) {
+        W.player.weapons.push(m.unlock);
+        W.player.ammo[m.unlock] = 30;
+        W.message = `Job done: +$${m.reward}. New weapon: ${m.unlock.toUpperCase()}.`;
+      } else {
+        W.message = `Job done: +$${m.reward}.`;
+      }
+      W.messageT = 4;
+      if (W.audio) W.audio.missionDone();
+      // Finishing a job cools the heat off (the safehouse, the drop, the
+      // crew scattered — nobody's chasing you anymore).
+      clearWanted(W);
+      W.saveGame();
+      if (M.index >= MISSION_DEFS.length - 1) {
+        // The story is over: ending screen, then free roam.
+        W.screen = 'ending';
+      } else {
+        M.index += 1;
+        W.nextReady = true;
       }
     },
 
     fail(reason) {
-      if (runner.state !== 'running' && runner.state !== 'dialogue') return;
-      runner.state = 'failed';
-      runner.live = false;
+      M.state = 'idle';
+      M.stepDef = null;
+      clearEnemies(W);
+      W.failReason = reason;
       W.screen = 'failed';
-      W.whyFailed = reason;
-      if (W.sound) W.sound.fail();
-      clearMarkerCar(W);
-      clearFoes(W);
     },
 
     retry() {
-      clearMarkerCar(W);
-      clearFoes(W);
-      if (W.resetHeat) W.resetHeat();
-      // Reset mutable stage text (kill counters).
-      for (const j of JOBS) {
-        for (const s of j.stages) {
-          if (s.key === 'clear') s.brief = 'Clear out Kade\u2019s crew (0/5)';
-          if (s.key === 'wave1') s.brief = 'Defeat Kade\u2019s crew — wave 1 (0/4)';
-          if (s.key === 'wave2') s.brief = 'Defeat Kade and his last crew (0/5)';
-        }
+      const p = W.player;
+      p.health = 100;
+      p.armor = 0;
+      if (p.car) {
+        p.car.driver = 'parked';
+        p.car = null;
+        if (p.mesh) p.mesh.visible = true;
       }
-      runner.start(runner.index);
+      p.x = LANDMARKS.playerStart.x;
+      p.z = LANDMARKS.playerStart.z;
+      p.heading = LANDMARKS.playerStart.heading;
+      W.wanted.stars = 0;
+      W.wanted.bustT = 0;
+      syncPolice(W);
+      clearEnemies(W);
+      W.cameraSnap = true;
+      M.start(M.index);
       W.screen = 'play';
     },
   };
-  return runner;
-}
-
-function prepareStage(W) {
-  const runner = W.jobs;
-  const s = runner.stageDef;
-  if (!s) return;
-  runner.downCount = 0;
-  if (s.type === 'car') {
-    clearMarkerCar(W);
-    const car = spawnVehicle(s.motor, s.x, s.z, Math.PI / 2, s.tint);
-    car.driver = 'parked';
-    car.mesh = W.view.buildVehicleMesh(s.motor, s.tint);
-    car.mesh.userData.hitRef = { kind: 'car', ref: car };
-    car.mesh.position.set(car.x, 0, car.z);
-    car.mesh.rotation.y = car.facing;
-    W.view.scene.add(car.mesh);
-    runner.markerCar = car;
-    W.motors.push(car);
-    return;
-  }
-  if (s.type === 'kill') {
-    clearFoes(W);
-    const n = s.count;
-    for (let i = 0; i < n; i += 1) {
-      const a = (i / n) * Math.PI * 2 + W.dice.between(-0.4, 0.4);
-      const r = 10 + W.dice.between(0, 16);
-      const x = s.x + Math.sin(a) * r;
-      const z = s.z + Math.cos(a) * r;
-      const boss = s.chief && i === n - 1;
-      spawnFoe(W, x, z, {
-        health: boss ? 220 : 60,
-        damage: boss ? 14 : 9,
-        accuracy: boss ? 0.55 : 0.42,
-        shirt: boss ? 0x8a1f2b : 0x7a1f2b,
-        boss,
-      });
-    }
-  }
-}
-
-function clearMarkerCar(W) {
-  if (!W.jobs) return;
-  const car = W.jobs.markerCar;
-  if (!car) return;
-  if (car.driver === 'hero') {
-    // The hero is driving the job car when the job ends: keep the car
-    // (it is theirs now), just drop the marker. Removing it would leave
-    // the hero in an invisible car they can never re-enter.
-    W.jobs.markerCar = null;
-    return;
-  }
-  const i = W.motors.indexOf(car);
-  if (i !== -1) W.motors.splice(i, 1);
-  if (car.mesh) {
-    W.view.scene.remove(car.mesh);
-    car.mesh = null;
-  }
-  W.jobs.markerCar = null;
-}
-
-function nextStage(W) {
-  const runner = W.jobs;
-  const j = runner.job;
-  if (W.sound) W.sound.pickup();
-  runner.stage += 1;
-  if (runner.stage >= j.stages.length) {
-    // Job complete.
-    runner.state = 'passed';
-    runner.live = false;
-    runner.finished.push(j.key);
-    W.hero.cash += j.pay;
-    W.hero.rep += j.fame;
-    W.tally.cashEarned += j.pay;
-    W.tally.missionsDone += 1;
-    if (j.gift && !W.hero.owned.includes(j.gift)) {
-      W.hero.owned.push(j.gift);
-      W.hero.ammo[j.gift] = ARSENAL[j.gift].clip;
-      W.note = `${ARSENAL[j.gift].label} unlocked!`;
-      W.noteT = 4;
-    }
-    runner.banner = { title: 'MISSION PASSED', sub: j.name, text: `+$${j.pay} · +${j.fame} REP`, kind: 'passed' };
-    runner.bannerT = 0;
-    if (W.sound) W.sound.pass();
-    clearMarkerCar(W);
-    clearFoes(W);
-    if (runner.index + 1 < JOBS.length) {
-      runner.index += 1;
-      runner.stage = 0;
-      W.jobWaiting = true;
-    } else {
-      runner.state = 'done';
-      W.screen = 'ending';
-    }
-    W.saveGame();
-    return;
-  }
-  prepareStage(W);
+  return M;
 }

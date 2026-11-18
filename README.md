@@ -4,17 +4,31 @@
 [![rank](https://make.fun/badge/gta6-01/minachan-sec/gta6-01-bot/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/minachan-sec/gta6-01-bot/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-**Solara Bay: Neon Tide** — an original 3D open-world crime game built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC. You play Rook Calloway, a wheelman back in a neon coastal city at dusk: steal cars, drift for cash, outrun the SBPD — cruisers, foot cops and a police helicopter that now hovers low and ahead, in the driving camera's view — and run six story jobs with dialogue for the fixer Marisol Vega. Six weapons, a wanted system, day-night lighting, traffic and pedestrians, and automatic saves. No Rockstar Games names, characters, art or assets — the city, story, vehicles and music are all original.
+**Solara Bay: Neon Tide** — a complete open-world crime game in the spirit of GTA 6, playable offline in a desktop browser. Rook Calloway, a wheelman back in town and broke, runs six story jobs for the fixer Marisol Vega while the SBPD hunts him and the shark Kade Morozov moves against him.
 
-## Play it
+What is in the game:
+
+- A seeded open city (Beachfront, Little Havana, Downtown, the Docks, the Hills) with day-to-night sky, traffic and pedestrians
+- Six vehicles to drive and steal, arcade driving with drift, nitro and near-miss bonuses
+- A five-star wanted system: pursuit cars, foot cops and a police helicopter with a searchlight
+- Six story missions with dialogue, objectives and rewards (Back in Town, Hot Wheels, Payback, Night Run, The Getaway, King of Solara)
+- Six weapons (fists, bat, pistol, SMG, shotgun, rifle), enemy crews and a boss fight
+- A full HUD with minimap, wanted stars, clock, speedometer and mission objectives
+- Procedural music and sound effects (WebAudio, no audio files), autosave to local storage
+
+Built with Three.js (vendored locally as a minified build) and plain ES modules. No network requests, no build step.
+
+## Run it
 
 ```sh
 node serve.ts
 ```
 
-Then open http://localhost:8080 in a desktop browser. No build step — every file the game loads lives under `game/`, including the vendored Three.js (minified, served locally, no CDN).
+Then open http://localhost:8080 in a desktop browser.
 
-WASD to move and drive, mouse to look, click to shoot, E to enter or steal a car, F to punch, Shift to sprint or boost nitro, Space to handbrake, 1–6 to switch weapons, R to reload, Esc to pause, M to mute. Your progress saves automatically after each mission.
+## Controls
+
+WASD move & drive · Mouse look · Click shoot · E enter / steal a car · F punch · Shift sprint / nitro · Space handbrake · 1–6 weapons · R reload · Esc pause · M mute
 
 ---
 

@@ -1,299 +1,256 @@
-// Combat: six weapons, hitscan shooting through the crosshair (a real
-// THREE.Raycaster against the world), melee, and the job foes — gang
-// members who chase the hero and shoot back. Shooting in public is a
-// crime; hitting a cop is a bigger one.
+// Combat: shooting (raycast), melee, reload, and enemy AI.
+// Enemies are crew members with a health bar; they advance and shoot back.
 import * as THREE from 'three';
-import { TUNE, ARSENAL } from './config.js';
-import { raiseHeat } from './police.js';
-import { panicWalkers } from './traffic.js';
-import { harmVehicle } from './vehicles.js';
-import { isSolid, pushOut } from './city.js';
+import { CFG, WEAPONS } from './config.js';
+import { addWanted, wasted } from './police.js';
+import { damageCar } from './vehicles.js';
+import { scarePeds } from './traffic.js';
 
-const caster = new THREE.Raycaster();
-const cross = new THREE.Vector2(0, 0);
+const raycaster = new THREE.Raycaster();
+const aimDir = new THREE.Vector3();
 
-function findTarget(obj) {
-  let o = obj;
-  while (o) {
-    if (o.userData && o.userData.hitRef) return o.userData.hitRef;
-    o = o.parent;
+export function shoot(W) {
+  const p = W.player;
+  if (p.car || p.fireT > 0 || p.reloadT > 0) return;
+  const def = WEAPONS[p.weapon];
+  if (def.kind !== 'gun') return;
+  if (p.ammo[p.weapon] <= 0) {
+    p.reloadT = def.reload;
+    return;
   }
-  return null;
-}
-
-/** Attach a floating health bar to a foe's mesh group. */
-function attachHealthBar(mesh) {
-  const bar = new THREE.Group();
-  const back = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.1, 0.14),
-    new THREE.MeshBasicMaterial({ color: 0x14161a, transparent: true, opacity: 0.8, depthWrite: false }),
-  );
-  const front = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.06, 0.1),
-    new THREE.MeshBasicMaterial({ color: 0xe74c3c, transparent: true, opacity: 0.95, depthWrite: false }),
-  );
-  front.position.z = 0.01;
-  bar.add(back, front);
-  bar.position.y = 2.45;
-  mesh.add(bar);
-  return { bar, front };
-}
-
-export function spawnFoe(W, x, z, opts = {}) {
-  const mesh = W.view.buildPersonMesh(opts.shirt ?? 0x7a1f2b, opts.pants ?? 0x1a1a1a, opts.skin ?? 0xc68642, { weapon: true, cap: 0x1a1a1a });
-  mesh.position.set(x, 0, z);
-  W.view.scene.add(mesh);
-  const hb = attachHealthBar(mesh);
-  const foe = {
-    x, z,
-    facing: Math.atan2(W.hero.x - x, W.hero.z - z),
-    health: opts.health ?? 60,
-    maxHealth: opts.health ?? 60,
-    speed: opts.speed ?? 5.2,
-    hurt: opts.damage ?? 9,
-    aim: opts.accuracy ?? 0.45,
-    shotT: W.dice.between(0.4, 1.2),
-    state: 'alive',
-    r: 0.55,
-    mesh,
-    bar: hb,
-    walkPhase: W.dice.between(0, 6),
-    boss: !!opts.boss,
-  };
-  mesh.userData.hitRef = { kind: 'enemy', ref: foe };
-  W.foes.push(foe);
-  return foe;
-}
-
-export function dropFoe(W, foe) {
-  const i = W.foes.indexOf(foe);
-  if (i !== -1) W.foes.splice(i, 1);
-  if (foe.mesh) {
-    W.view.scene.remove(foe.mesh);
-    foe.mesh.userData.hitRef = null;
-  }
-}
-
-export function clearFoes(W) {
-  for (const f of [...W.foes]) dropFoe(W, f);
-}
-
-function harmFoe(W, foe, amount) {
-  if (foe.state !== 'alive') return;
-  foe.health -= amount;
-  W.view.spawnBlood(foe.x, 1.4, foe.z);
-  if (foe.health <= 0) {
-    foe.health = 0;
-    foe.state = 'down';
-    foe.mesh.visible = false;
-    W.tally.kills = (W.tally.kills || 0) + 1;
-    W.hero.rep += 10;
-    dropFoe(W, foe);
-    if (W.jobs) W.jobs.onFoeDown(foe);
-  }
-}
-
-function harmWalker(W, walker, amount) {
-  if (walker.state === 'down') return;
-  walker.state = 'down';
-  walker.speed = 0;
-  W.view.spawnBlood(walker.x, 1.2, walker.z);
-  if (walker.mesh) walker.mesh.visible = false;
-  if (walker.cop) raiseHeat(W, 1, 'You shot a cop.');
-  else raiseHeat(W, 1, 'Someone saw you shoot a civilian.');
-}
-
-/** Fire the current weapon. Returns false when it cannot fire (reloading/empty). */
-export function fireWeapon(W) {
-  const hero = W.hero;
-  const spec = ARSENAL[hero.weapon];
-  if (!spec || hero.reloadT > 0 || hero.fireT > 0) return false;
-  if (spec.style === 'melee') {
-    hero.fireT = 1 / spec.pace;
-    return swingMelee(W, spec);
-  }
-  if (hero.ammo[hero.weapon] <= 0) {
-    startReload(W);
-    return false;
-  }
-  hero.fireT = 1 / spec.pace;
-  hero.ammo[hero.weapon] -= 1;
-  const count = spec.shot ?? 1;
-  const cam = W.view.camera;
-  const muzzle = {
-    x: hero.x + Math.sin(W.yaw) * 0.7,
-    y: 1.45,
-    z: hero.z + Math.cos(W.yaw) * 0.7,
-  };
-  W.view.spawnFlash(muzzle.x, muzzle.y, muzzle.z);
-  if (W.sound) {
-    if (hero.weapon === 'shotgun') W.sound.shotgun();
-    else W.sound.shot();
-  }
-  panicWalkers(W, hero.x, hero.z, 60);
-  if (W.heat.stars === 0 && W.heat.beat.length > 0) raiseHeat(W, 1, 'A cop heard the shot.');
-  // Kick the camera a touch.
-  W.view.addShake(spec.jolt * 60);
-
-  for (let i = 0; i < count; i += 1) {
-    const spread = spec.wobble;
-    cross.set((Math.random() - 0.5) * spread * 40, (Math.random() - 0.5) * spread * 40);
-    caster.setFromCamera(cross, cam);
-    caster.far = spec.reach;
-    // Targets: static town meshes plus every live entity mesh.
-    const targets = W.solidHit.slice();
-    for (const f of W.foes) if (f.mesh) targets.push(f.mesh);
-    for (const walker of W.walkers) if (walker.mesh && walker.state !== 'down') targets.push(walker.mesh);
-    for (const car of W.motors) if (car.mesh && !car.dead) targets.push(car.mesh);
-    const hits = caster.intersectObjects(targets, true);
-    const hit = hits[0];
-    const end = hit ? hit.point : caster.ray.at(spec.reach, new THREE.Vector3());
-    W.view.spawnTracer(muzzle.x, muzzle.y, muzzle.z, end.x, end.y, end.z);
-    if (!hit) continue;
-    const ref = findTarget(hit.object);
-    W.view.spawnSpark(hit.point.x, hit.point.y, hit.point.z);
-    if (!ref) continue;
-    if (ref.kind === 'enemy') harmFoe(W, ref.ref, spec.hurt);
-    else if (ref.kind === 'ped') harmWalker(W, ref.ref, spec.hurt);
-    else if (ref.kind === 'car') {
-      const car = ref.ref;
-      if (car.driver === 'police') raiseHeat(W, 1, 'You shot a police cruiser.');
-      harmVehicle(W, car, spec.hurt);
-    }
-  }
-  return true;
-}
-
-export function startReload(W) {
-  const hero = W.hero;
-  const spec = ARSENAL[hero.weapon];
-  if (!spec || spec.style !== 'gun' || hero.reloadT > 0) return;
-  if (hero.ammo[hero.weapon] >= spec.clip) return;
-  hero.reloadT = 1.1;
-  if (W.sound) W.sound.click();
-}
-
-export function completeReload(W) {
-  const hero = W.hero;
-  const spec = ARSENAL[hero.weapon];
-  if (spec && spec.style === 'gun') hero.ammo[hero.weapon] = spec.clip;
-}
-
-/** Melee swing in front of the hero. Returns true when something was hit. */
-export function swingMelee(W, spec) {
-  const hero = W.hero;
-  const w = spec || ARSENAL[hero.weapon];
-  const reach = w.reach + 0.6;
-  const facing = W.yaw;
-  let landed = false;
-  const tryHit = (tx, tz, hit) => {
-    const d = Math.hypot(tx - hero.x, tz - hero.z);
-    if (d > reach) return;
-    const dir = Math.atan2(tx - hero.x, tz - hero.z);
-    let diff = dir - facing;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    if (Math.abs(diff) < 1.1) {
-      hit();
-      landed = true;
-    }
-  };
-  for (const f of [...W.foes]) {
-    if (f.state === 'alive') tryHit(f.x, f.z, () => harmFoe(W, f, w.hurt));
-  }
-  for (const walker of W.walkers) {
-    if (walker.state !== 'down') {
-      tryHit(walker.x, walker.z, () => {
-        if (walker.cop) raiseHeat(W, 1, 'You hit a cop.');
-        else raiseHeat(W, 1, 'You beat someone up in public.');
-        harmWalker(W, walker, w.hurt);
-      });
-    }
-  }
-  if (W.sound) W.sound.punch();
-  return landed;
-}
-
-/** Foot cops and gang members can hurt the hero. Armor absorbs first. */
-export function harmHero(W, amount) {
-  const hero = W.hero;
-  if (hero.invuln > 0 || W.screen !== 'play') return;
-  hero.invuln = 0.45;
-  let rest = amount;
-  if (hero.armor > 0) {
-    const soaked = Math.min(hero.armor, rest * 0.6);
-    hero.armor -= soaked;
-    rest -= soaked;
-  }
-  hero.health -= rest;
-  W.view.addShake(7);
-  W.painFlash = 1;
-  if (hero.health <= 0) {
-    hero.health = 0;
-    if (W.onWasted) W.onWasted();
-  }
-}
-
-function foeShoot(W, foe, dt) {
-  const hero = W.hero;
-  foe.shotT -= dt;
-  if (foe.shotT > 0) return;
-  foe.shotT = 0.9 + W.dice.between(0, 0.9);
-  const d = Math.hypot(hero.x - foe.x, hero.z - foe.z);
-  if (d > 42 || hero.car) return; // they cannot hit a moving car reliably; they aim at the hero on foot
-  const muzzle = { x: foe.x + Math.sin(foe.facing) * 0.7, y: 1.4, z: foe.z + Math.cos(foe.facing) * 0.7 };
-  W.view.spawnFlash(muzzle.x, muzzle.y, muzzle.z);
-  if (W.sound) W.sound.shot();
-  const chance = foe.aim * Math.max(0.25, 1 - d / 55);
-  const spread = 1.5;
-  const tx = hero.x + (Math.random() - 0.5) * spread * 2;
-  const tz = hero.z + (Math.random() - 0.5) * spread * 2;
-  W.view.spawnTracer(muzzle.x, muzzle.y, muzzle.z, tx, 1.3, tz);
-  if (Math.random() < chance) harmHero(W, foe.hurt);
-}
-
-export function stepFoes(W, dt) {
-  const hero = W.hero;
-  for (const f of [...W.foes]) {
-    if (f.state !== 'alive') continue;
-    const dx = hero.x - f.x;
-    const dz = hero.z - f.z;
-    const d = Math.hypot(dx, dz);
-    const want = Math.atan2(dx, dz);
-    let diff = want - f.facing;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    f.facing += Math.max(-4 * dt, Math.min(4 * dt, diff));
-    if (d > 20) {
-      const nx = f.x + Math.sin(f.facing) * f.speed * dt;
-      const nz = f.z + Math.cos(f.facing) * f.speed * dt;
-      if (!isSolid(W.town, nx, nz, f.r)) {
-        f.x = nx;
-        f.z = nz;
-      } else {
-        f.facing += Math.PI / 3;
+  p.ammo[p.weapon] -= 1;
+  p.fireT = def.rate;
+  const pellets = def.pellets || 1;
+  // The shot leaves the player's gun and travels horizontally along the
+  // camera yaw, at torso height. (Shooting along the camera's 3D forward
+  // would dive into the ground: the camera sits high and looks down.)
+  const origin = new THREE.Vector3(p.x, 1.4, p.z);
+  const baseDir = new THREE.Vector3(Math.sin(W.camYaw), 0, Math.cos(W.camYaw));
+  for (let i = 0; i < pellets; i += 1) {
+    const dir = baseDir.clone();
+    dir.x += (Math.random() - 0.5) * def.spread * 2;
+    dir.y += (Math.random() - 0.5) * def.spread * 2;
+    dir.z += (Math.random() - 0.5) * def.spread * 2;
+    dir.normalize();
+    raycaster.set(origin, dir);
+    raycaster.far = def.range;
+    const targets = [];
+    for (const e of W.enemies) if (e.mesh && e.health > 0) targets.push(e.mesh);
+    for (const car of W.cars) if (car.mesh && !car.dead) targets.push(car.mesh);
+    for (const ped of W.peds) if (ped.mesh) targets.push(ped.mesh);
+    for (const cop of W.wanted.footCops) if (cop.mesh) targets.push(cop.mesh);
+    const hits = raycaster.intersectObjects(targets, true);
+    if (hits.length > 0) {
+      const hit = hits[0];
+      let obj = hit.object;
+      while (obj && !obj.userData.hitRef && obj.parent) obj = obj.parent;
+      const ref = obj ? obj.userData.hitRef : null;
+      if (ref) {
+        if (ref.kind === 'enemy') hurtEnemy(W, ref.ref, def.damage, hit.point);
+        else if (ref.kind === 'car') {
+          damageCar(W, ref.ref, def.damage);
+          addWanted(W, 1, 'You shot a car in public.');
+        } else if (ref.kind === 'ped') {
+          scarePeds(W, ref.ref.x, ref.ref.z, 30);
+          addWanted(W, 2, 'You shot a civilian.');
+          W.renderer.spawnSparks(hit.point.x, hit.point.y, hit.point.z);
+        } else if (ref.kind === 'cop') {
+          addWanted(W, 1, 'You shot a cop.');
+          W.renderer.spawnSparks(hit.point.x, hit.point.y, hit.point.z);
+        }
       }
-      pushOut(W.town, f);
-      f.walkPhase += dt * f.speed * 1.6;
-      const s = Math.sin(f.walkPhase) * 0.55;
-      const u = f.mesh.userData;
+      W.renderer.spawnSparks(hit.point.x, hit.point.y, hit.point.z);
+    }
+  }
+  // Muzzle flash at the player's gun + noise that draws attention.
+  W.renderer.spawnFlash(p.x + Math.sin(W.camYaw) * 1.2, 1.4, p.z + Math.cos(W.camYaw) * 1.2);
+  W.renderer.addShake(1.5);
+  if (W.audio) W.audio.gunshot();
+  scarePeds(W, p.x, p.z, 25);
+}
+
+export function reload(W) {
+  const p = W.player;
+  const def = WEAPONS[p.weapon];
+  if (def.kind !== 'gun' || p.reloadT > 0) return;
+  if (p.ammo[p.weapon] >= def.mag) return;
+  p.reloadT = def.reload;
+}
+
+export function finishReload(W) {
+  const p = W.player;
+  const def = WEAPONS[p.weapon];
+  if (def.kind === 'gun') p.ammo[p.weapon] = def.mag;
+  if (W.audio) W.audio.click();
+}
+
+export function melee(W, def) {
+  const p = W.player;
+  if (p.car || p.fireT > 0) return;
+  p.fireT = def.rate;
+  const range = def.range || CFG.combat.meleeRange;
+  let hitAny = false;
+  for (const e of W.enemies) {
+    if (e.health <= 0) continue;
+    const d = Math.hypot(e.x - p.x, e.z - p.z);
+    if (d > range) continue;
+    const ang = Math.atan2(e.x - p.x, e.z - p.z);
+    let diff = ang - p.heading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    if (Math.abs(diff) > CFG.combat.meleeArc) continue;
+    hurtEnemy(W, e, def.damage, { x: e.x, y: 1, z: e.z });
+    hitAny = true;
+  }
+  // A punch can also smash a car window — and anger the law.
+  for (const car of W.cars) {
+    if (car.dead) continue;
+    if (Math.hypot(car.x - p.x, car.z - p.z) < range + 1) {
+      damageCar(W, car, def.damage * 0.5);
+      hitAny = true;
+    }
+  }
+  if (hitAny && W.audio) W.audio.punch();
+}
+
+function hurtEnemy(W, e, damage, point) {
+  e.health -= damage;
+  e.flashT = 0.12;
+  if (e.healthBar) {
+    e.healthBar.scale.x = Math.max(0.01, e.health / e.maxHealth);
+  }
+  W.renderer.spawnSparks(point.x, point.y, point.z);
+  if (e.health <= 0) {
+    e.health = 0;
+    W.stats.kills += 1;
+    W.mission.killsDone += 1;
+    if (e.mesh) {
+      e.mesh.rotation.x = -Math.PI / 2;
+      e.mesh.position.y = 0.3;
+    }
+    if (e.healthBar) e.healthBar.visible = false;
+    // The body fades out after a few seconds.
+    e.fadeT = 4;
+  }
+}
+
+export function spawnEnemies(W, list) {
+  // list: [{x, z, hp, boss}]
+  for (const spec of list) {
+    const e = {
+      x: spec.x,
+      z: spec.z,
+      heading: Math.atan2(W.player.x - spec.x, W.player.z - spec.z),
+      health: spec.hp || 60,
+      maxHealth: spec.hp || 60,
+      boss: !!spec.boss,
+      fireT: 1 + Math.random(),
+      speed: spec.boss ? 4.5 : 3.6,
+      r: 0.6,
+      walkPhase: Math.random() * 6,
+      flashT: 0,
+      fadeT: 0,
+      mesh: null,
+      healthBar: null,
+    };
+    e.mesh = W.renderer.makePersonMesh(spec.boss ? 0x8b0000 : 0x5b2c6f, 0x1a1a2e, 0xe8b98a, { weapon: true });
+    if (spec.boss) e.mesh.scale.set(1.25, 1.25, 1.25);
+    e.mesh.userData.hitRef = { kind: 'enemy', ref: e };
+    W.renderer.scene.add(e.mesh);
+    // Health bar: a small green plane floating above the head.
+    const bar = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.1, 0.14),
+      new THREE.MeshBasicMaterial({ color: spec.boss ? 0xff3333 : 0x33ff66, transparent: true, opacity: 0.9 }),
+    );
+    bar.position.set(e.x, 2.3, e.z);
+    W.renderer.scene.add(bar);
+    e.healthBar = bar;
+    W.enemies.push(e);
+  }
+}
+
+export function clearEnemies(W) {
+  for (const e of W.enemies) {
+    if (e.mesh) W.renderer.scene.remove(e.mesh);
+    if (e.healthBar) W.renderer.scene.remove(e.healthBar);
+  }
+  W.enemies = [];
+}
+
+export function updateEnemies(W, dt) {
+  const p = W.player;
+  for (const e of W.enemies) {
+    if (e.health <= 0) {
+      if (e.fadeT > 0) {
+        e.fadeT -= dt;
+        if (e.fadeT <= 0) {
+          if (e.mesh) W.renderer.scene.remove(e.mesh);
+          e.mesh = null;
+        }
+      }
+      continue;
+    }
+    const dx = p.x - e.x;
+    const dz = p.z - e.z;
+    const d = Math.hypot(dx, dz);
+    // Advance until in shooting range, then stand and fire.
+    if (d > CFG.combat.enemyShootRange * 0.7 && d < CFG.combat.enemySight) {
+      e.heading = Math.atan2(dx, dz);
+      e.x += Math.sin(e.heading) * e.speed * dt;
+      e.z += Math.cos(e.heading) * e.speed * dt;
+      e.walkPhase += dt * 9;
+    } else if (d <= CFG.combat.enemyShootRange) {
+      e.heading = Math.atan2(dx, dz);
+      e.fireT -= dt;
+      if (e.fireT <= 0) {
+        e.fireT = e.boss ? 1.4 : 1.8 + Math.random() * 1.0;
+        // Enemy fire: a visible flash + a chance to land.
+        W.renderer.spawnFlash(e.x + Math.sin(e.heading), 1.4, e.z + Math.cos(e.heading));
+        if (Math.random() < CFG.combat.enemyAccuracy && p.invuln <= 0) {
+          hurtPlayer(W, e.boss ? 10 : 5);
+        }
+        if (W.audio) W.audio.gunshot();
+      }
+    }
+    if (e.mesh) {
+      e.mesh.position.set(e.x, 0, e.z);
+      e.mesh.rotation.y = e.heading;
+      const u = e.mesh.userData;
       if (u.legL) {
+        const s = Math.sin(e.walkPhase) * 0.5;
         u.legL.rotation.x = s;
         u.legR.rotation.x = -s;
+        u.armR.rotation.x = -1.2; // aiming
       }
-    } else {
-      foeShoot(W, f, dt);
+      if (e.flashT > 0) {
+        e.flashT -= dt;
+        e.mesh.position.y = 0.05;
+      } else {
+        e.mesh.position.y = 0;
+      }
     }
-    f.mesh.position.set(f.x, 0, f.z);
-    f.mesh.rotation.y = f.facing;
-    // Health bar faces the camera and shows remaining health.
-    const hb = f.bar;
-    if (hb) {
-      hb.bar.lookAt(W.view.camera.position);
-      const k = Math.max(0, f.health / f.maxHealth);
-      hb.front.scale.x = k;
-      hb.front.position.x = -(1 - k) * 0.53;
-      hb.front.material.color.setHex(k > 0.5 ? 0x2ecc71 : k > 0.25 ? 0xf5b942 : 0xe74c3c);
+    if (e.healthBar) {
+      e.healthBar.position.set(e.x, 2.35, e.z);
+      e.healthBar.lookAt(W.renderer.camera.position);
     }
+  }
+}
+
+export function hurtPlayer(W, amount) {
+  const p = W.player;
+  if (p.invuln > 0 || W.screen !== 'play') return;
+  let rest = amount;
+  if (p.armor > 0) {
+    const absorbed = Math.min(p.armor, rest);
+    p.armor -= absorbed;
+    rest -= absorbed;
+  }
+  p.health -= rest;
+  p.invuln = 0.5;
+  W.hudFlash = 1;
+  W.renderer.addShake(4);
+  if (p.health <= 0) {
+    p.health = 0;
+    wasted(W);
   }
 }

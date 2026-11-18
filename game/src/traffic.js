@@ -1,224 +1,154 @@
-// The town's ambient population: traffic motors that follow the street
-// grid and stop at red lights, and walkers who stroll the curbs and scatter
-// when a gun goes off or a car bears down on them. Neither knows about
-// jobs; both make the town feel alive.
-import { TUNE, MOTORS, PAINT } from './config.js';
-import { STREETS, pickStreetSpot, pickCurbSpot, isSolid, pushOut } from './city.js';
-import { spawnVehicle, steerVehicle, refreshVehicleMesh } from './vehicles.js';
+// Traffic cars and pedestrians: simple road-following AI and sidewalk
+// walkers. They make the city feel alive and give the player something
+// to dodge, steal from, and (if wanted) anger.
+import { CFG } from './config.js';
+import { makeCar, driveCar, syncCarMesh } from './vehicles.js';
+import { isSolid, nearestRoad, roadCoords } from './city.js';
 
-const SIGNAL_CYCLE = 9; // seconds of green per axis
+const PED_SHIRTS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6, 0xecf0f1, 0xe67e22];
+const PED_PANTS = [0x2c3e50, 0x34495e, 0x7f8c8d, 0x1a1a2e];
+const PED_SKINS = [0xe8b98a, 0xc68642, 0x8d5524, 0xffdbac];
 
-/** 0 = north-south green, 1 = east-west green, from the clock. */
-export function signalPhase(clock) {
-  return Math.floor(clock / SIGNAL_CYCLE) % 2;
-}
+export function spawnPopulation(rng, city, renderer) {
+  const traffic = [];
+  const peds = [];
+  const roads = roadCoords();
+  const types = ['sedan', 'taxi', 'van', 'pickup', 'classic'];
 
-const SHIRT_TONES = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6, 0xecf0f1, 0x1abc9c];
-const PANTS_TONES = [0x2c3e50, 0x34495e, 0x1a1a1a, 0x5d4037];
-const SKIN_TONES = [0xe8b98a, 0xc68642, 0x8d5524, 0xf1c27d];
-
-export function seedPopulation(dice, town, view) {
-  const flow = [];
-  const walkers = [];
-  const kinds = ['sedan', 'sedan', 'taxi', 'pickup', 'van', 'sedan', 'comet'];
-  for (let i = 0; i < TUNE.crowd.motors; i += 1) {
-    const p = pickStreetSpot(dice);
-    const kind = dice.choose(kinds);
-    const car = spawnVehicle(kind, p.x, p.z, p.vertical ? 0 : Math.PI / 2, dice.choose(PAINT.motors));
-    car.driver = 'flow';
-    car.speed = dice.between(8, 14);
-    car.route = planRoute(dice, p);
-    car.mesh = view.buildVehicleMesh(kind, car.tint);
-    view.scene.add(car.mesh);
-    flow.push(car);
+  // Traffic: cars driving along random roads.
+  for (let i = 0; i < 16; i += 1) {
+    const vertical = rng.chance(0.5);
+    const road = rng.pick(roads);
+    const along = rng.range(-300, 300);
+    const dir = rng.chance(0.5) ? 1 : -1;
+    const type = rng.pick(types);
+    const car = makeCar(type, vertical ? road : along, vertical ? along : road, vertical ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2), undefined);
+    car.driver = 'traffic';
+    car.cruise = rng.range(9, 14);
+    car.vertical = vertical;
+    car.dir = dir;
+    car.mesh = renderer.makeCarMesh(type, car.color);
+    car.mesh.userData.hitRef = { kind: 'car', ref: car };
+    renderer.scene.add(car.mesh);
+    traffic.push(car);
   }
-  for (let i = 0; i < TUNE.crowd.walkers; i += 1) {
-    const p = pickCurbSpot(dice);
-    const walker = {
-      x: p.x, z: p.z,
-      facing: dice.between(0, Math.PI * 2),
-      speed: 0,
-      target: null,
+
+  // Pedestrians: walkers on the sidewalks.
+  for (let i = 0; i < 22; i += 1) {
+    const road = rng.pick(roads);
+    const along = rng.range(-300, 300);
+    const side = rng.chance(0.5) ? 1 : -1;
+    const vertical = rng.chance(0.5);
+    const ped = {
+      x: vertical ? road + side * (CFG.world.roadHalf + 2) : along,
+      z: vertical ? along : road + side * (CFG.world.roadHalf + 2),
+      heading: rng.range(0, Math.PI * 2),
+      speed: rng.range(1.2, 2.2),
       state: 'walk',
       panic: 0,
       r: 0.55,
-      walkPhase: dice.between(0, Math.PI * 2),
+      walkPhase: rng.range(0, 6),
       mesh: null,
-      cop: false,
     };
-    walker.mesh = view.buildPersonMesh(dice.choose(SHIRT_TONES), dice.choose(PANTS_TONES), dice.choose(SKIN_TONES));
-    view.scene.add(walker.mesh);
-    walkers.push(walker);
+    ped.mesh = renderer.makePersonMesh(rng.pick(PED_SHIRTS), rng.pick(PED_PANTS), rng.pick(PED_SKINS));
+    ped.mesh.userData.hitRef = { kind: 'ped', ref: ped };
+    renderer.scene.add(ped.mesh);
+    peds.push(ped);
   }
-  return { flow, walkers };
+  return { traffic, peds };
 }
 
-/** A route is a list of waypoints along streets; the motor follows them in order. */
-function planRoute(dice, from) {
-  const points = [];
-  let x = from.x;
-  let z = from.z;
-  let vertical = from.vertical;
-  for (let i = 0; i < 4; i += 1) {
-    if (vertical) {
-      z = dice.choose(STREETS);
-      points.push({ x, z });
-      x = dice.choose(STREETS);
-      points.push({ x, z });
-      vertical = false;
-    } else {
-      x = dice.choose(STREETS);
-      points.push({ x, z });
-      z = dice.choose(STREETS);
-      points.push({ x, z });
-      vertical = true;
-    }
-  }
-  return points;
-}
-
-function turnDiff(a, b) {
-  let d = a - b;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return d;
-}
-
-function steerToward(car, tx, tz, dt, town, others, clock) {
-  const dx = tx - car.x;
-  const dz = tz - car.z;
-  const dist = Math.hypot(dx, dz);
-  if (dist < 6) return true;
-  const want = Math.atan2(dx, dz);
-  const wheel = Math.max(-1, Math.min(1, turnDiff(want, car.facing) * 2.2));
-  let gas = 0.55;
-  // Stop at a red light when approaching a junction on a red axis.
-  const vertical = Math.abs(Math.cos(car.facing)) > 0.7;
-  let jx = 0;
-  let jz = 0;
-  let nearestCross = Infinity;
-  for (const rx of STREETS) {
-    for (const rz of STREETS) {
-      const d = Math.hypot(car.x - rx, car.z - rz);
-      if (d < nearestCross) {
-        nearestCross = d;
-        jx = rx;
-        jz = rz;
-      }
-    }
-  }
-  const toJx = jx - car.x;
-  const toJz = jz - car.z;
-  const aheadDot = (toJx * Math.sin(car.facing) + toJz * Math.cos(car.facing)) / (nearestCross || 1);
-  const redForMe = (vertical && signalPhase(clock) === 1) || (!vertical && signalPhase(clock) === 0);
-  if (redForMe && aheadDot > 0.5 && nearestCross < 30 && nearestCross > 11) {
-    gas = car.speed > 3 ? -1 : 0;
-  }
-  steerVehicle(car, gas, wheel, dt, town, others);
-  return dist < 7;
-}
-
-export function stepFlow(W, dt) {
-  for (const car of W.flow) {
+export function updateTraffic(W, dt) {
+  const player = W.player;
+  for (const car of W.traffic) {
     if (car.dead) continue;
-    // Follow the motor ahead: match its speed, stop only when it is stopped
-    // and close. A queue flows instead of freezing bumper to bumper.
-    let cap = Infinity;
-    for (const other of W.motors) {
+    // Slow down for the car ahead (or the player's car).
+    let throttle = 0.6;
+    const aheadX = car.x + Math.sin(car.heading) * 10;
+    const aheadZ = car.z + Math.cos(car.heading) * 10;
+    for (const other of W.cars) {
       if (other === car || other.dead) continue;
-      const dx = other.x - car.x;
-      const dz = other.z - car.z;
-      const ahead = dx * Math.sin(car.facing) + dz * Math.cos(car.facing);
-      const side = Math.abs(dx * Math.cos(car.facing) - dz * Math.sin(car.facing));
-      if (ahead > 0 && ahead < 18 && side < 4) {
-        cap = Math.min(cap, other.speed + 2);
-        if (ahead < 8 && other.speed < 2) cap = 0;
-      }
+      if (Math.hypot(other.x - aheadX, other.z - aheadZ) < 5) { throttle = 0; break; }
     }
-    const target = car.route && car.route[0];
-    if (!target) {
-      car.route = planRoute(W.dice, { x: car.x, z: car.z, vertical: Math.abs(Math.cos(car.facing)) > 0.7 });
-      continue;
+    // Panic: flee from a nearby crime scene.
+    if (W.panicAt && Math.hypot(car.x - W.panicAt.x, car.z - W.panicAt.z) < 40) throttle = 1;
+    // At an intersection, sometimes turn onto the crossing road.
+    const onX = nearestRoad(car.x);
+    const onZ = nearestRoad(car.z);
+    if (Math.abs(car.x - onX) < 2 && Math.abs(car.z - onZ) < 2 && Math.random() < dt * 0.25) {
+      car.vertical = !car.vertical;
+      car.dir = Math.random() < 0.5 ? 1 : -1;
     }
-    if (steerToward(car, target.x, target.z, dt, W.town, W.motors, W.clock)) {
-      car.route.shift();
-      if (car.route.length === 0) car.route = planRoute(W.dice, { x: car.x, z: car.z, vertical: Math.abs(Math.cos(car.facing)) > 0.7 });
-    }
-    if (car.speed > cap) car.speed = Math.max(cap, car.speed - 40 * dt);
-    refreshVehicleMesh(car, dt);
-    // Wandered far from the action: respawn on a street near the hero.
-    if (Math.hypot(car.x - W.hero.x, car.z - W.hero.z) > TUNE.crowd.vanishDist) {
-      const p = pickStreetSpot(W.dice);
-      car.x = p.x;
-      car.z = p.z;
-      car.facing = p.vertical ? 0 : Math.PI / 2;
-      car.speed = 10;
-      car.route = planRoute(W.dice, p);
-    }
+    // Steer back onto the road centreline.
+    const targetRoad = car.vertical ? onX : onZ;
+    const off = car.vertical ? car.x - targetRoad : car.z - targetRoad;
+    const wantHeading = car.vertical ? (car.dir > 0 ? 0 : Math.PI) : (car.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+    let diff = wantHeading - car.heading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const steer = Math.max(-1, Math.min(1, diff * 2 - off * 0.05));
+    driveCar(car, throttle, steer, dt, W.city, W.cars);
+    // Traffic never goes faster than its cruise speed.
+    if (Math.abs(car.speed) > car.cruise) car.speed = Math.sign(car.speed) * car.cruise;
+    syncCarMesh(car, dt);
+    void player;
   }
 }
 
-export function refreshWalkerMesh(walker, dt) {
-  const m = walker.mesh;
-  if (!m) return;
-  m.position.set(walker.x, 0, walker.z);
-  m.rotation.y = walker.facing;
-  const u = m.userData;
-  if (u.legL && walker.speed > 0.5) {
-    walker.walkPhase += dt * walker.speed * 1.6;
-    const s = Math.sin(walker.walkPhase) * 0.55;
-    u.legL.rotation.x = s;
-    u.legR.rotation.x = -s;
-    u.armL.rotation.x = -s * 0.7;
-    u.armR.rotation.x = s * 0.7;
-  } else if (u.legL) {
-    u.legL.rotation.x *= 0.8;
-    u.legR.rotation.x *= 0.8;
-    u.armL.rotation.x *= 0.8;
-    u.armR.rotation.x *= 0.8;
-  }
-  m.visible = walker.state !== 'down';
-}
-
-export function stepWalkers(W, dt) {
-  for (const walker of W.walkers) {
-    if (walker.state === 'down' || walker.cop) continue; // cops are driven by police.js
-    if (walker.panic > 0) {
-      walker.panic -= dt;
-      walker.facing = Math.atan2(walker.x - W.hero.x, walker.z - W.hero.z);
-      walker.speed = 6.5;
-    } else if (walker.state === 'walk') {
-      walker.speed = 1.6;
-      if (!walker.target || Math.hypot(walker.target.x - walker.x, walker.target.z - walker.z) < 3) {
-        walker.target = pickCurbSpot(W.dice);
-      }
-      const want = Math.atan2(walker.target.x - walker.x, walker.target.z - walker.z);
-      walker.facing += Math.max(-3 * dt, Math.min(3 * dt, turnDiff(want, walker.facing)));
-    }
-    const nx = walker.x + Math.sin(walker.facing) * walker.speed * dt;
-    const nz = walker.z + Math.cos(walker.facing) * walker.speed * dt;
-    if (!isSolid(W.town, nx, nz, walker.r)) {
-      walker.x = nx;
-      walker.z = nz;
+export function updatePeds(W, dt) {
+  for (const ped of W.peds) {
+    if (ped.panic > 0) {
+      ped.panic -= dt;
+      ped.state = 'run';
     } else {
-      walker.facing += Math.PI / 2;
-      walker.target = null;
+      ped.state = 'walk';
     }
-    pushOut(W.town, walker);
-    // Too far from the action: quietly relocate near the hero.
-    if (Math.hypot(walker.x - W.hero.x, walker.z - W.hero.z) > 260) {
-      const near = pickCurbSpot(W.dice);
-      walker.x = Math.max(-300, Math.min(300, W.hero.x + near.x * 0.3));
-      walker.z = Math.max(-300, Math.min(300, W.hero.z + near.z * 0.3));
-    }
-    refreshWalkerMesh(walker, dt);
+    const speed = ped.state === 'run' ? 5.5 : ped.speed;
+    // Occasionally pick a new direction.
+    if (Math.random() < dt * 0.08) ped.heading += (Math.random() - 0.5) * 1.2;
+    const nx = ped.x + Math.sin(ped.heading) * speed * dt;
+    const nz = ped.z + Math.cos(ped.heading) * speed * dt;
+    if (!isSolid(W.city, nx, ped.z, ped.r)) ped.x = nx;
+    if (!isSolid(W.city, ped.x, nz, ped.r)) ped.z = nz;
+    // Bounce off buildings by turning.
+    if (isSolid(W.city, ped.x, ped.z, ped.r)) ped.heading += Math.PI / 2;
+    syncPedMesh(ped, dt, speed > 0.1);
   }
 }
 
-/** Every walker who can hear the shot runs from it. */
-export function panicWalkers(W, x, z, radius) {
-  for (const walker of W.walkers) {
-    if (walker.cop || walker.state === 'down') continue;
-    if (Math.hypot(walker.x - x, walker.z - z) < radius) walker.panic = 3 + W.dice.between(0, 2);
+export function syncPedMesh(ped, dt, moving) {
+  if (!ped.mesh) return;
+  ped.mesh.position.set(ped.x, 0, ped.z);
+  let diff = ped.heading - ped.mesh.rotation.y;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  ped.mesh.rotation.y += diff * Math.min(1, dt * 8);
+  const u = ped.mesh.userData;
+  if (u.legL) {
+    if (moving) {
+      ped.walkPhase += dt * 10;
+      const s = Math.sin(ped.walkPhase) * 0.55;
+      u.legL.rotation.x = s;
+      u.legR.rotation.x = -s;
+      u.armL.rotation.x = -s * 0.5;
+      u.armR.rotation.x = s * 0.5;
+    } else {
+      u.legL.rotation.x *= 0.8;
+      u.legR.rotation.x *= 0.8;
+      u.armL.rotation.x *= 0.8;
+      u.armR.rotation.x *= 0.8;
+    }
+  }
+}
+
+// Everyone nearby panics: peds run, traffic flees.
+export function scarePeds(W, x, z, radius) {
+  W.panicAt = { x, z };
+  W.panicT = 4;
+  for (const ped of W.peds) {
+    if (Math.hypot(ped.x - x, ped.z - z) < radius) {
+      ped.panic = 4;
+      ped.heading = Math.atan2(ped.x - x, ped.z - z);
+    }
   }
 }

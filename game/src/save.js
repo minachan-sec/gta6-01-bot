@@ -1,51 +1,47 @@
-// Progress storage in localStorage. The game stores after every passed
-// mission and from the pause menu; Continue on the title screen picks up
-// where the player left off. When storage is unavailable (private windows),
-// the game simply plays the session through without saving.
-import { TUNE } from './config.js';
+// Save games in the browser's local storage. One slot, one key.
+// The title screen's Continue button only exists when a save is present.
+const KEY = 'solara-bay-save-v1';
 
-export function loadProgress() {
+export function readSave() {
   try {
-    const raw = window.localStorage.getItem(TUNE.storeKey);
+    const raw = window.localStorage.getItem(KEY);
     if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (!data || data.format !== 1) return null;
-    return data;
+    const save = JSON.parse(raw);
+    if (typeof save !== 'object' || save === null) return null;
+    return save;
   } catch {
     return null;
   }
 }
 
-export function storeProgress(W) {
+export function writeSave(W) {
   try {
-    const hero = W.hero;
-    const record = {
-      format: 1,
-      cash: hero.cash,
-      rep: hero.rep,
-      jobIndex: W.jobs.index,
-      finished: W.jobs.finished,
-      x: hero.x,
-      z: hero.z,
-      facing: hero.facing,
-      health: hero.health,
-      armor: hero.armor,
-      owned: hero.owned,
-      tally: W.tally,
-      hour: W.hour,
-      when: Date.now(),
+    const p = W.player;
+    const save = {
+      version: 1,
+      cash: p.cash,
+      rep: p.rep,
+      health: p.health,
+      armor: p.armor,
+      weapons: p.weapons,
+      missionIndex: W.mission.index,
+      completed: W.mission.completed,
+      x: p.x,
+      z: p.z,
+      heading: p.heading,
+      hour: W.gameHour,
+      stats: W.stats,
+      savedAt: Date.now(),
     };
-    window.localStorage.setItem(TUNE.storeKey, JSON.stringify(record));
+    window.localStorage.setItem(KEY, JSON.stringify(save));
     return true;
   } catch {
     return false;
   }
 }
 
-export function wipeProgress() {
+export function clearSave() {
   try {
-    window.localStorage.removeItem(TUNE.storeKey);
-  } catch {
-    // storage may be off; nothing to clear
-  }
+    window.localStorage.removeItem(KEY);
+  } catch { /* storage may be unavailable; the game still runs */ }
 }
