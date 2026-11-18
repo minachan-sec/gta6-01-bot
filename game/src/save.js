@@ -1,51 +1,51 @@
-// Save and load, in localStorage. The game saves after every mission pass
-// and from the pause menu; Continue on the title screen picks up where the
-// player left off. Storage can be off (private windows): then the game just
-// plays the session through.
-import { CFG } from './config.js';
+// Progress storage in localStorage. The game stores after every passed
+// mission and from the pause menu; Continue on the title screen picks up
+// where the player left off. When storage is unavailable (private windows),
+// the game simply plays the session through without saving.
+import { TUNE } from './config.js';
 
-export function readSave() {
+export function loadProgress() {
   try {
-    const raw = window.localStorage.getItem(CFG.saveKey);
+    const raw = window.localStorage.getItem(TUNE.storeKey);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data || data.v !== 1) return null;
+    if (!data || data.format !== 1) return null;
     return data;
   } catch {
     return null;
   }
 }
 
-export function writeSave(G) {
+export function storeProgress(W) {
   try {
-    const p = G.player;
-    const data = {
-      v: 1,
-      cash: p.cash,
-      rep: p.rep,
-      missionIndex: G.mission.index,
-      completed: G.mission.completed,
-      x: p.x,
-      z: p.z,
-      heading: p.heading,
-      health: p.health,
-      armor: p.armor,
-      weapons: p.weapons,
-      stats: G.stats,
-      hour: G.gameHour,
-      savedAt: Date.now(),
+    const hero = W.hero;
+    const record = {
+      format: 1,
+      cash: hero.cash,
+      rep: hero.rep,
+      jobIndex: W.jobs.index,
+      finished: W.jobs.finished,
+      x: hero.x,
+      z: hero.z,
+      facing: hero.facing,
+      health: hero.health,
+      armor: hero.armor,
+      owned: hero.owned,
+      tally: W.tally,
+      hour: W.hour,
+      when: Date.now(),
     };
-    window.localStorage.setItem(CFG.saveKey, JSON.stringify(data));
+    window.localStorage.setItem(TUNE.storeKey, JSON.stringify(record));
     return true;
   } catch {
     return false;
   }
 }
 
-export function clearSave() {
+export function wipeProgress() {
   try {
-    window.localStorage.removeItem(CFG.saveKey);
+    window.localStorage.removeItem(TUNE.storeKey);
   } catch {
-    // ignore
+    // storage may be off; nothing to clear
   }
 }

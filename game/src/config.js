@@ -1,137 +1,138 @@
-// Solara Bay: Neon Tide — tuning, palette and world constants (round 2, 3D).
-// One unit is one metre. The city is a road grid with a beach on the south edge.
-// Dusk-first palette: the whole game is graded sunset -> night ("neon tide").
+// Solara Bay: Neon Tide — tuning, palette and world constants (round 3).
+// One unit is one metre. The city is a road grid with a beach on the south
+// edge. The whole game is graded sunset -> night ("neon tide").
 
-export const CFG = {
-  world: {
-    size: 640, // playable square, -320..320 on x and z
-    roadSpacing: 80,
-    roadWidth: 16,
-    sidewalk: 3,
-    beachZ: 296, // z beyond this is sand, then sea
-    seaZ: 332,
+export const TUNE = {
+  map: {
+    span: 640, // playable square, -320..320 on x and z
+    streetGap: 80,
+    streetWide: 16,
+    curb: 3,
+    sandZ: 296, // z beyond this is sand, then sea
+    waterZ: 332,
   },
-  player: {
-    walkSpeed: 5.4,
-    sprintSpeed: 8.8,
-    accel: 42,
-    radius: 0.55,
-    maxHealth: 100,
-    maxArmor: 100,
-    maxStamina: 100,
-    staminaDrain: 16,
-    staminaRegen: 14,
-    punchRange: 2.4,
-    enterCarRange: 4.4,
+  hero: {
+    stroll: 5.4,
+    dash: 8.8,
+    push: 42,
+    girth: 0.55,
+    hpMax: 100,
+    vestMax: 100,
+    windMax: 100,
+    windUse: 16,
+    windBack: 14,
+    fistReach: 2.4,
+    boardReach: 4.4,
   },
-  camera: {
-    footDist: 7.5,
-    footHeight: 3.1,
-    carDist: 10.5,
-    carHeight: 4.4,
-    fov: 62,
-    fovNitro: 74,
-    pitchMin: -0.12,
-    pitchMax: 0.85,
+  lens: {
+    walkBack: 7.5,
+    walkUp: 3.1,
+    rideBack: 10.5,
+    rideUp: 4.4,
+    view: 62,
+    viewBoost: 74,
+    tiltLow: -0.12,
+    tiltHigh: 0.85,
   },
-  driving: {
-    nitroBoost: 1.32,
-    nitroDrain: 26, // per second, 0..100 tank
-    nitroRegen: 9,
-    driftGrip: 0.42, // lateral grip kept while handbraking
-    nearMissDist: 3.6,
-    nearMissMinSpeed: 18,
-    collisionDamage: 0.5, // car health lost per m/s of impact over threshold
-    collisionSpeedThreshold: 9,
+  wheels: {
+    boostMult: 1.32,
+    boostUse: 26, // per second, 0..100 tank
+    boostBack: 9,
+    slideGrip: 0.42, // lateral grip kept while handbraking
+    closeCallDist: 3.6,
+    closeCallSpeed: 18,
+    smashDamage: 0.5, // car health lost per m/s of impact over threshold
+    smashAt: 9,
   },
-  police: {
-    maxCopCars: 6,
-    footCops: 2,
-    heliStars: 3,
-    decayDelay: 6, // seconds with no cop near before stars drop
-    decayInterval: 4,
-    bustRange: 3.2,
-    bustTime: 2.0,
-    sightRange: 70,
+  heat: {
+    maxCruisers: 6,
+    beatCops: 2,
+    chopperAt: 3,
+    coolDelay: 6, // seconds with no cop near before stars drop
+    coolStep: 4,
+    grabDist: 3.2,
+    grabTime: 2.0,
+    eyeRange: 70,
   },
-  traffic: { cars: 14, peds: 22, despawnDist: 230, spawnDist: 170 },
-  time: {
-    startHour: 19.0, // 19:00 Friday, golden dusk
-    minutesPerSecond: 0.4, // a full day in 60 real minutes
-    dayNames: ['FRI', 'SAT', 'SUN', 'MON', 'TUE', 'WED', 'THU'],
+  crowd: { motors: 14, walkers: 22, vanishDist: 230, appearDist: 170 },
+  clock: {
+    firstHour: 19.0, // 19:00 Friday, golden dusk
+    minsPerSec: 0.4, // a full day in 60 real minutes
+    weekDays: ['FRI', 'SAT', 'SUN', 'MON', 'TUE', 'WED', 'THU'],
   },
-  saveKey: 'solara-bay-neon-tide-save-v1',
+  storeKey: 'solara-bay-neon-tide-save-v1',
 };
 
-// Dusk -> night lighting presets, keyed by game hour. Render lerps between them.
-export const SKY_PRESETS = [
-  { hour: 17.0, top: 0x2b4a7a, horizon: 0xffb36b, fog: 0x8a6a72, sun: 0xffd9a0, sunI: 2.4, hemi: 0.55, ambient: 0x8a7a9a, lamp: 0.0 },
-  { hour: 19.0, top: 0x1b2a4a, horizon: 0xff7a5c, fog: 0x54405a, sun: 0xff9a6b, sunI: 1.9, hemi: 0.45, ambient: 0x6a5a8a, lamp: 0.35 },
-  { hour: 20.5, top: 0x0d1530, horizon: 0xd94f70, fog: 0x2a2438, sun: 0xff6b8a, sunI: 1.1, hemi: 0.34, ambient: 0x4a3a6a, lamp: 0.8 },
-  { hour: 22.0, top: 0x070b1e, horizon: 0x1a2340, fog: 0x141428, sun: 0x8a9aff, sunI: 0.5, hemi: 0.26, ambient: 0x30305a, lamp: 1.0 },
-  { hour: 24.0, top: 0x070b1e, horizon: 0x1a2340, fog: 0x141428, sun: 0x8a9aff, sunI: 0.5, hemi: 0.26, ambient: 0x30305a, lamp: 1.0 },
+// Dusk -> night lighting presets, keyed by game hour. The renderer lerps
+// between neighbouring presets as the clock moves.
+export const SKY_STOPS = [
+  { hour: 17.0, zenith: 0x2b4a7a, edge: 0xffb36b, haze: 0x8a6a72, light: 0xffd9a0, lightI: 2.4, sky: 0.55, fill: 0x8a7a9a, street: 0.0 },
+  { hour: 19.0, zenith: 0x1b2a4a, edge: 0xff7a5c, haze: 0x54405a, light: 0xff9a6b, lightI: 1.9, sky: 0.45, fill: 0x6a5a8a, street: 0.35 },
+  { hour: 20.5, zenith: 0x0d1530, edge: 0xd94f70, haze: 0x2a2438, light: 0xff6b8a, lightI: 1.1, sky: 0.34, fill: 0x4a3a6a, street: 0.8 },
+  { hour: 22.0, zenith: 0x070b1e, edge: 0x1a2340, haze: 0x141428, light: 0x8a9aff, lightI: 0.5, sky: 0.26, fill: 0x30305a, street: 1.0 },
+  { hour: 24.0, zenith: 0x070b1e, edge: 0x1a2340, haze: 0x141428, light: 0x8a9aff, lightI: 0.5, sky: 0.26, fill: 0x30305a, street: 1.0 },
 ];
 
-export const PALETTE = {
-  road: 0x23232e,
-  roadLine: 0xd8c86a,
-  sidewalk: 0x3a3a48,
-  ground: 0x2c2c3a,
-  sand: 0xc2a878,
-  sea: 0x0e4a6b,
-  building: [0x2e3440, 0x4a3b52, 0x37455c, 0x54423a, 0x3a2f4a, 0x2c4a44, 0x41364e],
-  windowLit: 0xffd27a,
-  windowDark: 0x1a2233,
-  neon: [0xff2d78, 0x00e5ff, 0xffe600, 0xff6b35, 0x7c5cff],
-  carColors: [0xc0392b, 0x2980b9, 0xf39c12, 0x16a085, 0x8e44ad, 0xecf0f1, 0x2c3e50, 0x27ae60, 0xe74c3c, 0x3498db],
+export const PAINT = {
+  asphalt: 0x23232e,
+  centreLine: 0xd8c86a,
+  pavement: 0x3a3a48,
+  dirt: 0x2c2c3a,
+  beachSand: 0xc2a878,
+  ocean: 0x0e4a6b,
+  towers: [0x2e3440, 0x4a3b52, 0x37455c, 0x54423a, 0x3a2f4a, 0x2c4a44, 0x41364e],
+  litPane: 0xffd27a,
+  darkPane: 0x1a2233,
+  glow: [0xff2d78, 0x00e5ff, 0xffe600, 0xff6b35, 0x7c5cff],
+  motors: [0xc0392b, 0x2980b9, 0xf39c12, 0x16a085, 0x8e44ad, 0xecf0f1, 0x2c3e50, 0x27ae60, 0xe74c3c, 0x3498db],
 };
 
-export const WEAPONS = {
-  fists: { name: 'Fists', slot: 1, kind: 'melee', damage: 12, rate: 2.4, range: 2.4, mag: Infinity, auto: true },
-  bat: { name: 'Bat', slot: 2, kind: 'melee', damage: 26, rate: 1.7, range: 2.9, mag: Infinity, auto: true },
-  pistol: { name: 'Pistol', slot: 3, kind: 'gun', damage: 18, rate: 3.2, range: 90, mag: 12, spread: 0.018, kick: 0.011, auto: false },
-  smg: { name: 'SMG', slot: 4, kind: 'gun', damage: 11, rate: 9.5, range: 70, mag: 30, spread: 0.055, kick: 0.006, auto: true },
-  shotgun: { name: 'Shotgun', slot: 5, kind: 'gun', damage: 9, pellets: 6, rate: 1.15, range: 42, mag: 6, spread: 0.11, kick: 0.05, auto: false },
-  rifle: { name: 'Rifle', slot: 6, kind: 'gun', damage: 34, rate: 5.2, range: 140, mag: 24, spread: 0.012, kick: 0.02, auto: true },
+export const ARSENAL = {
+  fists: { label: 'Fists', slot: 1, style: 'melee', hurt: 12, pace: 2.4, reach: 2.4, clip: Infinity, hold: true },
+  bat: { label: 'Bat', slot: 2, style: 'melee', hurt: 26, pace: 1.7, reach: 2.9, clip: Infinity, hold: true },
+  pistol: { label: 'Pistol', slot: 3, style: 'gun', hurt: 18, pace: 3.2, reach: 90, clip: 12, wobble: 0.018, jolt: 0.011, hold: false },
+  smg: { label: 'SMG', slot: 4, style: 'gun', hurt: 11, pace: 9.5, reach: 70, clip: 30, wobble: 0.055, jolt: 0.006, hold: true },
+  shotgun: { label: 'Shotgun', slot: 5, style: 'gun', hurt: 9, shot: 6, pace: 1.15, reach: 42, clip: 6, wobble: 0.11, jolt: 0.05, hold: false },
+  rifle: { label: 'Rifle', slot: 6, style: 'gun', hurt: 34, pace: 5.2, reach: 140, clip: 24, wobble: 0.012, jolt: 0.02, hold: true },
 };
 
-export const WEAPON_ORDER = ['fists', 'bat', 'pistol', 'smg', 'shotgun', 'rifle'];
+export const ARSENAL_ORDER = ['fists', 'bat', 'pistol', 'smg', 'shotgun', 'rifle'];
 
-export const CAR_TYPES = {
-  sedan: { name: 'Marlin Sedan', top: 38, accel: 13, grip: 1.0, len: 4.4, wid: 1.9, hgt: 1.45 },
-  taxi: { name: 'Bay Cab', top: 36, accel: 12, grip: 1.0, len: 4.4, wid: 1.9, hgt: 1.45 },
-  pickup: { name: 'Rancho Pickup', top: 33, accel: 11, grip: 0.95, len: 4.9, wid: 2.0, hgt: 1.7 },
-  van: { name: 'Courier Van', top: 30, accel: 9.5, grip: 0.9, len: 5.0, wid: 2.0, hgt: 2.1 },
-  comet: { name: 'Comet GT', top: 55, accel: 19, grip: 1.12, len: 4.2, wid: 1.9, hgt: 1.25 },
-  cop: { name: 'SBPD Cruiser', top: 48, accel: 16, grip: 1.05, len: 4.5, wid: 1.9, hgt: 1.45 },
+export const MOTORS = {
+  sedan: { label: 'Marlin Sedan', fast: 38, pull: 13, hold: 1.0, long: 4.4, wide: 1.9, tall: 1.45 },
+  taxi: { label: 'Bay Cab', fast: 36, pull: 12, hold: 1.0, long: 4.4, wide: 1.9, tall: 1.45 },
+  pickup: { label: 'Rancho Pickup', fast: 33, pull: 11, hold: 0.95, long: 4.9, wide: 2.0, tall: 1.7 },
+  van: { label: 'Courier Van', fast: 30, pull: 9.5, hold: 0.9, long: 5.0, wide: 2.0, tall: 2.1 },
+  comet: { label: 'Comet GT', fast: 55, pull: 19, hold: 1.12, long: 4.2, wide: 1.9, tall: 1.25 },
+  cop: { label: 'SBPD Cruiser', fast: 48, pull: 16, hold: 1.05, long: 4.5, wide: 1.9, tall: 1.45 },
 };
 
-export const RANKS = [
-  { rep: 0, name: 'HUSTLER' },
-  { rep: 500, name: 'WHEELMAN' },
-  { rep: 1500, name: 'STREET BOSS' },
-  { rep: 3000, name: 'KING OF SOLARA' },
+export const TITLES = [
+  { rep: 0, label: 'HUSTLER' },
+  { rep: 500, label: 'WHEELMAN' },
+  { rep: 1500, label: 'STREET BOSS' },
+  { rep: 3000, label: 'KING OF SOLARA' },
 ];
 
-export function rankFor(rep) {
-  let r = RANKS[0];
-  for (const cand of RANKS) if (rep >= cand.rep) r = cand;
-  return r.name;
+export function titleForRep(rep) {
+  let found = TITLES[0];
+  for (const cand of TITLES) if (rep >= cand.rep) found = cand;
+  return found.label;
 }
 
-/** Districts for the HUD readout, in x/z metres. */
-export const DISTRICTS = [
-  { name: 'Marina', x0: -320, z0: -320, x1: -160, z1: 320 },
-  { name: 'Old Town', x0: -160, z0: -320, x1: 40, z1: -40 },
-  { name: 'Downtown', x0: 40, z0: -320, x1: 240, z1: 40 },
-  { name: 'The Hills', x0: 240, z0: -320, x1: 320, z1: 40 },
-  { name: 'Little Havana', x0: -160, z0: -40, x1: 40, z1: 320 },
-  { name: 'Beachfront', x0: 40, z0: 40, x1: 320, z1: 320 },
+/** Named districts for the HUD readout, in x/z metres. */
+export const ZONES = [
+  { label: 'Marina', x0: -320, z0: -320, x1: -160, z1: 320 },
+  { label: 'Old Town', x0: -160, z0: -320, x1: 40, z1: -40 },
+  { label: 'Downtown', x0: 40, z0: -320, x1: 240, z1: 40 },
+  { label: 'The Hills', x0: 240, z0: -320, x1: 320, z1: 40 },
+  { label: 'Little Havana', x0: -160, z0: -40, x1: 40, z1: 320 },
+  { label: 'Beachfront', x0: 40, z0: 40, x1: 320, z1: 320 },
 ];
 
-export function districtAt(x, z) {
-  for (const d of DISTRICTS) {
-    if (x >= d.x0 && x < d.x1 && z >= d.z0 && z < d.z1) return d.name;
+export function zoneAt(x, z) {
+  for (const zone of ZONES) {
+    if (x >= zone.x0 && x < zone.x1 && z >= zone.z0 && z < zone.z1) return zone.label;
   }
   return 'Solara Bay';
 }
