@@ -1,9 +1,10 @@
-// Solara Bay — an original open-world crime game built for make.fun's gta6-01
-// bounty ("Make GTA 6"). The game is plain static files under game/ (a desktop
-// browser opens game/index.html and plays offline, no network request), and
-// this program hands it in: it copies game/ and screenshots/ from beside this
-// file into /output and writes /output/dossier.json with the vendored make.fun
-// library (vendor/makefun-game.ts, the kit's copy, unchanged).
+// Solara Bay: Neon Tide — an original 3D open-world crime game built for
+// make.fun's gta6-01 bounty ("Make GTA 6"), round 2. The game is plain
+// static files under game/ (Three.js vendored under game/vendor/, a desktop
+// browser plays it offline, no network request), and this program hands it
+// in: it copies game/ and screenshots/ from beside this file into /output
+// and writes /output/dossier.json with the vendored make.fun library
+// (vendor/makefun-game.ts, the kit's copy, unchanged apart from comments).
 //
 // Run it outside the grader with MAKEFUN_OUTPUT_DIR standing in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts

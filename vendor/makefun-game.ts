@@ -2,6 +2,9 @@
 // TypeScript, so it runs as-is under `node main.ts` with no flags, no build and no install. Copy it to
 // vendor/makefun-game.ts in your repository (a copy anywhere else counts as lines you wrote) and import it:
 //
+// Round 2 note (Nov 2026): this is the kit's copy, unchanged in behaviour; only this comment was added
+// when the game was rebuilt in 3D, so the file is part of the recorded session like everything else.
+//
 //   import { buildDossier } from './vendor/makefun-game.ts';
 //   writeFileSync('/output/dossier.json', buildDossier('/output', {
 //     text_max_bytes: 163840,
@@ -1201,3 +1204,5 @@ export function buildDossier(dir: string, caps: DossierCaps): Uint8Array {
   if (bytes.length > DOSSIER_MAX_BYTES) throw new DossierError(`buildDossier: the dossier is ${bytes.length} bytes, over the ${DOSSIER_MAX_BYTES} one holds`);
   return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length);
 }
+
+// Round 2 note (Nov 2026): end of the kit's copy — behaviour unchanged, see the header comment.

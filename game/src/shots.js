@@ -1,141 +1,155 @@
 // The screenshot scenes behind ?shot=chase|drive|foot|title. Each one stages
 // the real game — the same world, the same renderer, the same HUD — into a
-// moment a short session really reaches, then paints it twice and sets
-// window.__shotReady. Nothing here is faked: the cars, cops and mission
-// markers on screen are live entities in a running simulation.
+// moment a short session really reaches, then lets the loop run so motion
+// reads in the frame. Nothing here is faked: the cars, cops, enemies and
+// mission markers on screen are live entities in a running simulation.
 import { createCar } from './vehicles.js';
 import { addWanted, syncPolice } from './police.js';
+import { createEnemy } from './combat.js';
 
 function placeChase(G) {
   const p = G.player;
-  // Rook in the red Comet, mid-chase down Marlin Ave with three stars.
-  const car = createCar('comet', 864, 640, Math.PI / 2, '#c0392b');
+  // Rook in the red Comet, mid-chase up the Downtown avenue with three stars.
+  const car = createCar('comet', 40, 120, Math.PI, 0xc0392b);
   car.driver = 'player';
-  car.speed = 380;
+  car.speed = 30;
+  car.mesh = G.renderer.makeCarMesh('comet', 0xc0392b);
+  car.mesh.userData.hitRef = { kind: 'car', ref: car };
+  G.renderer.scene.add(car.mesh);
   p.car = car;
   p.x = car.x;
-  p.y = car.y;
+  p.z = car.z;
   G.cars.push(car);
-  // Mission 3 is live: reach the safehouse. It opens with two stars; raise
-  // it to three and let the wanted system place its cruisers, then move
-  // those cruisers into frame right behind the player.
-  G.mission.start(2);
+  // Mission 5 is live: escape to the safehouse. Three stars, heli overhead.
+  G.mission.start(4);
+  G.mission.advanceDialogue();
+  G.mission.advanceDialogue();
+  G.mission.advanceDialogue();
+  G.mission.step = 1; // escape stage
   G.wanted.stars = 3;
   syncPolice(G);
-  const spots = [{ x: 864, y: 540, speed: 360 }, { x: 900, y: 590, speed: 340 }];
+  const spots = [
+    { x: 44, z: 75, speed: 24 }, // one cruiser ahead, in frame, siren on
+    { x: 36, z: 158, speed: 26 },
+    { x: 44, z: 140, speed: 27 },
+  ];
   G.wanted.cops.forEach((cop, i) => {
     const spot = spots[i % spots.length];
     cop.x = spot.x;
-    cop.y = spot.y;
-    cop.angle = Math.PI / 2;
+    cop.z = spot.z;
+    cop.heading = Math.PI;
     cop.speed = spot.speed;
     cop.siren = true;
   });
   G.mission.state = 'running';
   G.mission.banner = null;
-  // Traffic ahead, all moving away from the player down the avenue.
-  const t1 = createCar('taxi', 830, 780, Math.PI / 2, '#f39c12');
+  // Traffic ahead, all moving away from the player up the avenue.
+  const t1 = createCar('taxi', 36, 60, Math.PI, 0xf39c12);
   t1.driver = 'traffic';
-  t1.speed = 130;
-  const t2 = createCar('sedan', 900, 850, Math.PI / 2, '#16a085');
+  t1.speed = 12;
+  t1.mesh = G.renderer.makeCarMesh('taxi', 0xf39c12);
+  G.renderer.scene.add(t1.mesh);
+  const t2 = createCar('sedan', 44, 20, Math.PI, 0x16a085);
   t2.driver = 'traffic';
-  t2.speed = 120;
+  t2.speed = 11;
+  t2.mesh = G.renderer.makeCarMesh('sedan', 0x16a085);
+  G.renderer.scene.add(t2.mesh);
   G.cars.push(t1, t2);
   G.traffic.push(t1, t2);
-  // A few pedestrians on the sidewalk watching the chase.
-  for (const ped of G.peds.slice(0, 6)) {
-    ped.x = 800 + G.rng.range(0, 30);
-    ped.y = 620 + G.rng.range(0, 110);
-    ped.panic = 2;
-  }
+  G.camYaw = Math.PI;
   G.cameraSnap = true;
 }
 
 function placeDrive(G) {
   const p = G.player;
-  // Cruising the beachfront in a yellow cab at golden hour: an open stretch
-  // of the beach road ahead, the sea below, traffic further down the road.
-  const car = createCar('taxi', 1000, 1440, 0, '#f39c12');
+  // Cruising the beachfront in a yellow cab at golden hour: the sea to the
+  // left, palms along the road, traffic further down the beach road.
+  const car = createCar('taxi', -120, 280, Math.PI / 2, 0xf39c12);
   car.driver = 'player';
-  car.speed = 200;
+  car.speed = 20;
+  car.mesh = G.renderer.makeCarMesh('taxi', 0xf39c12);
+  car.mesh.userData.hitRef = { kind: 'car', ref: car };
+  G.renderer.scene.add(car.mesh);
   p.car = car;
   p.x = car.x;
-  p.y = car.y;
+  p.z = car.z;
   G.cars.push(car);
-  const t1 = createCar('sedan', 1150, 1440, 0, '#7f8c8d');
+  const t1 = createCar('sedan', -40, 280, Math.PI / 2, 0x7f8c8d);
   t1.driver = 'traffic';
-  t1.speed = 150;
-  const t2 = createCar('pickup', 1560, 1440, 0, '#27ae60');
+  t1.speed = 14;
+  t1.mesh = G.renderer.makeCarMesh('sedan', 0x7f8c8d);
+  G.renderer.scene.add(t1.mesh);
+  const t2 = createCar('pickup', 60, 280, Math.PI / 2, 0x27ae60);
   t2.driver = 'traffic';
-  t2.speed = 140;
-  const t3 = createCar('van', 1450, 1420, 0, '#ecf0f1');
-  t3.driver = 'traffic';
-  t3.speed = 110;
-  G.cars.push(t1, t2, t3);
-  G.traffic.push(t1, t2, t3);
-  for (const ped of G.peds.slice(0, 8)) {
-    ped.x = 1200 + G.rng.range(-100, 300);
-    ped.y = 1380 + G.rng.range(0, 15);
-  }
+  t2.speed = 13;
+  t2.mesh = G.renderer.makeCarMesh('pickup', 0x27ae60);
+  G.renderer.scene.add(t2.mesh);
+  G.cars.push(t1, t2);
+  G.traffic.push(t1, t2);
   G.mission.start(0);
+  G.mission.advanceDialogue();
+  G.mission.advanceDialogue();
+  G.mission.advanceDialogue();
   G.mission.state = 'running';
   G.mission.banner = null;
+  G.camYaw = Math.PI / 2;
   G.cameraSnap = true;
 }
 
 function placeFoot(G) {
   const p = G.player;
-  // On foot at the marina docks, pistol out, one star, a foot cop closing in.
-  // Everyone stands on the marina road, clear of the blocks.
-  p.x = 110;
-  p.y = 690;
-  p.aimAngle = Math.PI / 2;
-  p.ammo = 18;
-  G.mission.start(1);
+  // On foot at Bayfront Plaza, pistol out, Marisol on the line, two of Kade's
+  // crew closing in and a foot cop a block away. Dialogue + combat + HUD.
+  p.x = 80;
+  p.z = 8;
+  p.heading = Math.PI;
+  p.weapon = 'pistol';
+  p.ammo.pistol = 12;
+  G.camYaw = Math.PI;
+  G.mission.start(2);
+  G.mission.advanceDialogue();
+  G.mission.advanceDialogue();
+  G.mission.advanceDialogue();
+  G.mission.step = 1; // kill stage
   G.mission.state = 'running';
   G.mission.banner = null;
-  // The pickup itself carries no heat, so this scene raises one star by hand
-  // and brings a foot cop into frame, closing in from the east.
+  // Hold Marisol's line on screen for the shot.
+  G.mission.dialogue = { lines: [{ who: 'marisol', text: 'Clear them out, Rook — and take the SMG from the stash first. It is yours now.' }], at: 0 };
+  G.showStagedDialogue = true;
+  const e1 = createEnemy(G, 88, -12, { health: 60 });
+  const e2 = createEnemy(G, 70, -6, { health: 60 });
+  e1.heading = Math.atan2(p.x - e1.x, p.z - e1.z);
+  e2.heading = Math.atan2(p.x - e2.x, p.z - e2.z);
   addWanted(G, 1, '');
   const cop = G.wanted.footCops[0];
   if (cop) {
-    cop.x = 200;
-    cop.y = 720;
+    cop.x = 96;
+    cop.z = 26;
   }
-  const t1 = createCar('sedan', 352, 700, Math.PI / 2, '#2c3e50');
-  t1.driver = 'traffic';
-  t1.speed = 120;
-  G.cars.push(t1);
-  G.traffic.push(t1);
-  for (const ped of G.peds.slice(0, 5)) {
-    ped.x = 100 + G.rng.range(-10, 30);
-    ped.y = 640 + G.rng.range(-30, 90);
-    ped.panic = 1.5;
-  }
-  G.particles.push({ kind: 'flash', x: 130, y: 730, t: 0, life: 0.08, angle: Math.PI / 2 });
+  G.renderer.spawnFlash(p.x + 1, 1.45, p.z - 1);
   G.cameraSnap = true;
 }
 
 function placeTitle(G) {
   const p = G.player;
   // The title screen sits over the living city: a cab waits at the kerb.
-  const car = createCar('comet', 864, 700, Math.PI / 2, '#c0392b');
+  const car = createCar('comet', 40, 60, Math.PI, 0xc0392b);
   car.driver = 'parked';
+  car.mesh = G.renderer.makeCarMesh('comet', 0xc0392b);
+  G.renderer.scene.add(car.mesh);
   G.cars.push(car);
-  p.x = 864;
-  p.y = 800;
+  p.x = 40;
+  p.z = 80;
+  p.heading = Math.PI;
+  G.camYaw = Math.PI;
   G.cameraSnap = true;
 }
 
-/** Stage a named scene and paint it; the caller sets window.__shotReady. */
-export function stageShot(name, G, renderer, ctx) {
+/** Stage a named scene; the caller runs the loop and sets window.__shotReady. */
+export function stageShot(name, G) {
   if (name === 'chase') placeChase(G);
   else if (name === 'drive') placeDrive(G);
   else if (name === 'foot') placeFoot(G);
   else placeTitle(G);
-  // Let the world breathe for a few steps so motion reads in the frame, but
-  // not so long that traffic piles into the intersections.
-  const step = G.stepWorld;
-  for (let i = 0; i < 12; i += 1) step(1 / 60, true);
-  renderer.draw(G, ctx);
+  G.screen = name === 'title' ? 'title' : 'play';
 }

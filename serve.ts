@@ -1,5 +1,5 @@
-// Solara Bay — a tiny static file server for local play-testing only.
-// `node serve.ts` serves game/ on http://localhost:8080 (or --port N).
+// Solara Bay: Neon Tide — a tiny static file server for local play-testing
+// only. `node serve.ts` serves game/ on http://localhost:8080 (or --port N).
 // It sends the MIME types a browser game needs, refuses any path outside
 // game/, and does nothing clever: a development convenience, not a web
 // server for the internet.
@@ -60,5 +60,5 @@ createServer((request, response) => {
   });
   createReadStream(file).pipe(response);
 }).listen(port, '127.0.0.1', () => {
-  console.log(`Solara Bay game/ is on http://localhost:${port}`);
+  console.log(`Solara Bay: Neon Tide game/ is on http://localhost:${port}`);
 });

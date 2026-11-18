@@ -3,16 +3,200 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solara Bay — an open-world crime game</title>
+<title>Solara Bay: Neon Tide — an open-world crime game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
-  /* Read aloud, never shown: the status line screen readers announce. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0a14; font-family: system-ui, -apple-system, sans-serif; color: #f2efe8; }
+  #scene { position: fixed; inset: 0; }
+  #scene canvas { display: block; width: 100%; height: 100%; }
+  .panel { background: rgba(12,14,18,.72); border: 1px solid rgba(255,255,255,.16); border-radius: 8px; }
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
+  #hud-topleft { position: absolute; top: 14px; left: 16px; padding: 10px 14px; min-width: 218px; }
+  #hud-cash { font-size: 20px; font-weight: 800; }
+  #hud-district { font-size: 13px; color: #b9b3a4; margin-top: 2px; }
+  #hud-job { font-size: 12px; color: #b9b3a4; }
+  #hud-rep { font-size: 12px; font-weight: 700; color: #f5b942; margin-top: 4px; }
+  #hud-topright { position: absolute; top: 14px; right: 16px; padding: 10px 14px; text-align: right; min-width: 180px; }
+  #hud-stars { font-size: 20px; letter-spacing: 3px; line-height: 1; }
+  #hud-stars .star { color: rgba(255,255,255,.18); }
+  #hud-stars .star.lit { color: #f5b942; text-shadow: 0 0 8px rgba(245,185,66,.8); }
+  #hud-clock { font-size: 13px; font-weight: 700; margin-top: 4px; }
+  #hud-weather { font-size: 11px; color: #b9b3a4; }
+  #hud-bottomleft { position: absolute; left: 16px; bottom: 16px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .bar-label { width: 62px; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #b9b3a4; }
+  .bar { width: 140px; height: 9px; background: rgba(255,255,255,.15); border-radius: 5px; overflow: hidden; }
+  .bar > div { height: 100%; border-radius: 5px; transition: width .15s; }
+  #bar-health-fill { background: #2ecc71; }
+  #bar-health-fill.low { background: #e74c3c; }
+  #bar-armor-fill { background: #4a90d9; }
+  #bar-stamina-fill { background: #f5b942; }
+  #minimap-wrap { margin-top: 8px; padding: 6px; }
+  #minimap { display: block; width: 200px; height: 200px; border-radius: 4px; }
+  #minimap-label { font-size: 10px; letter-spacing: 1px; color: #b9b3a4; padding: 4px 2px 0; }
+  #hud-objective { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 10px; padding: 9px 16px; max-width: 640px; }
+  #hud-objective .dot { width: 10px; height: 10px; border-radius: 50%; background: #f5b942; flex: none; }
+  #obj-text { font-size: 14px; font-weight: 600; }
+  #obj-timer { font-size: 14px; font-weight: 800; color: #b9b3a4; }
+  #obj-timer.low { color: #e74c3c; }
+  #hud-bottomright { position: absolute; right: 16px; bottom: 16px; text-align: right; }
+  #hud-weapons { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 8px; }
+  .wslot { display: flex; align-items: center; gap: 6px; padding: 6px 9px; background: rgba(12,14,18,.72); border: 1px solid rgba(255,255,255,.16); border-radius: 6px; font-size: 12px; }
+  .wslot.active { border-color: #f5b942; background: rgba(245,185,66,.18); }
+  .wslot-key { font-weight: 800; color: #f5b942; }
+  .wslot-ammo { font-weight: 700; color: #b9b3a4; }
+  #hud-speed { display: none; padding: 8px 14px; }
+  #speed-num { font-size: 30px; font-weight: 800; line-height: 1; }
+  #speed-unit { font-size: 12px; color: #b9b3a4; }
+  #speed-car { font-size: 11px; letter-spacing: 1px; color: #b9b3a4; margin-top: 2px; }
+  #nitro-wrap { width: 150px; height: 6px; background: rgba(255,255,255,.15); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  #nitro-fill { height: 100%; background: #00e5ff; }
+  #hud-toast { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); display: none; padding: 8px 18px; }
+  #toast-text { font-size: 15px; font-weight: 600; text-align: center; }
+  #hud-prompt { position: absolute; bottom: 74px; left: 50%; transform: translateX(-50%); display: none; padding: 8px 18px; }
+  #prompt-text { font-size: 15px; font-weight: 700; text-align: center; }
+  #hud-crosshair { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%,-50%); display: none; }
+  #hud-crosshair::before, #hud-crosshair::after { content: ''; position: absolute; background: rgba(242,239,232,.85); }
+  #hud-crosshair::before { left: 12px; top: 0; width: 2px; height: 26px; }
+  #hud-crosshair::after { top: 12px; left: 0; height: 2px; width: 26px; }
+  #hud-vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(200,20,20,.55) 100%); }
+  #dialogue { position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); display: none; align-items: flex-start; gap: 14px; width: min(680px, 92vw); padding: 14px 18px; }
+  #dlg-portrait { width: 52px; height: 52px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px; color: #14161a; }
+  #dlg-name { font-weight: 800; font-size: 14px; }
+  #dlg-text { font-size: 15px; line-height: 1.45; margin-top: 3px; min-height: 42px; }
+  #dlg-hint { font-size: 11px; color: #b9b3a4; margin-top: 6px; }
+  #banner { position: absolute; left: 0; right: 0; top: 30%; display: none; text-align: center; padding: 22px 0; background: rgba(8,10,14,.55); border-top: 3px solid #f5b942; border-bottom: 3px solid #f5b942; }
+  #banner-title { font-size: 34px; font-weight: 800; letter-spacing: 2px; }
+  #banner-sub { font-size: 14px; font-weight: 700; color: #f5b942; margin-top: 4px; letter-spacing: 1px; }
+  #banner-text { font-size: 16px; color: #b9b3a4; margin-top: 6px; }
+  .screen { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(8,10,14,.78); z-index: 10; text-align: center; padding: 20px; }
+  .screen h1 { font-size: 56px; margin: 0; letter-spacing: 4px; color: #f5b942; text-shadow: 0 0 30px rgba(245,185,66,.35); }
+  .screen .sub { font-size: 16px; color: #f2efe8; margin-top: 6px; }
+  .screen .tag { font-size: 13px; letter-spacing: 3px; color: #00e5ff; margin-top: 4px; }
+  .cards { display: flex; gap: 14px; margin: 22px 0 8px; flex-wrap: wrap; justify-content: center; }
+  .card { width: 190px; padding: 14px; text-align: left; }
+  .card .avatar { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #14161a; margin-bottom: 8px; }
+  .card .name { font-weight: 800; font-size: 15px; }
+  .card .role { font-size: 12px; color: #f5b942; font-weight: 700; }
+  .card .desc { font-size: 12px; color: #b9b3a4; margin-top: 4px; line-height: 1.4; }
+  .btn { pointer-events: auto; cursor: pointer; display: block; width: 260px; margin: 8px auto 0; padding: 12px; font-size: 17px; font-weight: 700; color: #f2efe8; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.25); border-radius: 8px; }
+  .btn:hover, .btn.selected { background: #f5b942; color: #14161a; border-color: #f5b942; }
+  .howto { margin-top: 18px; font-size: 13px; color: #b9b3a4; line-height: 1.7; }
+  .howto b { color: #f2efe8; }
+  .fine { margin-top: 16px; font-size: 11px; color: #8a8578; }
+  #end-title.red { color: #e74c3c; }
+  #end-title.gold { color: #f5b942; }
+  #end-lines p { margin: 4px 0; font-size: 15px; color: #b9b3a4; }
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="Solara Bay: explore a coastal city on foot and by car, steal cars, outrun the police and run jobs for Marisol Vega"></canvas>
+<div id="scene"></div>
+
+<div id="hud">
+  <div id="hud-topleft" class="panel">
+    <div id="hud-cash">$250</div>
+    <div id="hud-district">Solara Bay</div>
+    <div id="hud-job">Job 1 of 6</div>
+    <div id="hud-rep">HUSTLER · 0 REP</div>
+  </div>
+  <div id="hud-topright" class="panel">
+    <div id="hud-stars"></div>
+    <div id="hud-clock">FRI 19:00</div>
+    <div id="hud-weather">CLEAR · 28°C</div>
+  </div>
+  <div id="hud-bottomleft">
+    <div class="bar-row"><span class="bar-label">HEALTH</span><div class="bar"><div id="bar-health-fill"></div></div></div>
+    <div class="bar-row"><span class="bar-label">ARMOR</span><div class="bar"><div id="bar-armor-fill"></div></div></div>
+    <div class="bar-row"><span class="bar-label">STAMINA</span><div class="bar"><div id="bar-stamina-fill"></div></div></div>
+    <div id="minimap-wrap" class="panel">
+      <canvas id="minimap" width="200" height="200"></canvas>
+      <div id="minimap-label">SOLARA BAY · N ↑</div>
+    </div>
+  </div>
+  <div id="hud-objective" class="panel"><span class="dot"></span><span id="obj-text"></span><span id="obj-timer" class="timer"></span></div>
+  <div id="hud-bottomright">
+    <div id="hud-weapons"></div>
+    <div id="hud-speed" class="panel">
+      <span id="speed-num">0</span> <span id="speed-unit">mph</span>
+      <div id="speed-car">COMET GT</div>
+      <div id="nitro-wrap"><div id="nitro-fill"></div></div>
+    </div>
+  </div>
+  <div id="hud-toast" class="panel"><span id="toast-text"></span></div>
+  <div id="hud-prompt" class="panel"><span id="prompt-text"></span></div>
+  <div id="hud-crosshair"></div>
+  <div id="hud-vignette"></div>
+  <div id="dialogue" class="panel">
+    <div id="dlg-portrait">MV</div>
+    <div>
+      <div id="dlg-name">Marisol Vega</div>
+      <div id="dlg-text"></div>
+      <div id="dlg-hint">Enter / click to continue</div>
+    </div>
+  </div>
+  <div id="banner">
+    <div id="banner-title"></div>
+    <div id="banner-sub"></div>
+    <div id="banner-text"></div>
+  </div>
+</div>
+
+<div id="title-screen" class="screen" style="display:flex">
+  <h1>SOLARA BAY</h1>
+  <div class="tag">N E O N &nbsp; T I D E</div>
+  <div class="sub">An open-world crime story in a neon coastal city. Steal cars. Outrun the SBPD. Run six jobs for Marisol Vega.</div>
+  <div class="cards">
+    <div class="card panel">
+      <div class="avatar" style="background:#f5b942">RK</div>
+      <div class="name">Rook Calloway</div>
+      <div class="role">THE DRIVER</div>
+      <div class="desc">Back in Solara Bay and broke. The best wheelman the Bay ever forgot.</div>
+    </div>
+    <div class="card panel">
+      <div class="avatar" style="background:#2dd4bf">MV</div>
+      <div class="name">Marisol Vega</div>
+      <div class="role">THE FIXER</div>
+      <div class="desc">Runs the garage and the jobs. Cross her once — there is no twice.</div>
+    </div>
+    <div class="card panel">
+      <div class="avatar" style="background:#ef4444">KM</div>
+      <div class="name">Kade Morozov</div>
+      <div class="role">THE SHARK</div>
+      <div class="desc">Owns the docks and half the cops. He sold Rook out once already.</div>
+    </div>
+  </div>
+  <button id="btn-continue" class="btn">Continue</button>
+  <button id="btn-newgame" class="btn">New game</button>
+  <div class="howto">
+    <b>WASD</b> move &amp; drive · <b>Mouse</b> look · <b>Click</b> shoot · <b>E</b> enter / steal a car · <b>F</b> punch<br>
+    <b>Shift</b> sprint / nitro · <b>Space</b> handbrake · <b>1–6</b> weapons · <b>R</b> reload · <b>Esc</b> pause · <b>M</b> mute
+  </div>
+  <div class="fine">An original game. No Rockstar Games names, characters or assets.</div>
+</div>
+
+<div id="pause-screen" class="screen">
+  <h1>PAUSED</h1>
+  <div class="sub">Take a breath. Solara Bay waits.</div>
+  <div style="margin-top:18px">
+    <button id="btn-resume" class="btn">Resume</button>
+    <button id="btn-savequit" class="btn">Save &amp; quit to title</button>
+    <button id="btn-restart" class="btn">Restart mission</button>
+  </div>
+  <div class="fine">Esc to resume</div>
+</div>
+
+<div id="end-screen" class="screen">
+  <h1 id="end-title">WASTED</h1>
+  <div id="end-lines"></div>
+  <div style="margin-top:18px">
+    <button id="end-btn" class="btn">Try again (R)</button>
+  </div>
+</div>
+
 <p id="status" role="status" aria-live="polite"></p>
 <script type="module" src="./src/main.js"></script>
 </body>
